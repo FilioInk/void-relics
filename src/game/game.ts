@@ -20,6 +20,7 @@ import { createScreens } from '../ui/screens.ts';
 import { generateAsteroids, generateWorld, type World } from '../world/generate.ts';
 import { nebulaDensityAt, regionAt, scanRange, type Region } from '../world/regions.ts';
 import { aimOf, moveCursor, steerRadius, type Cursor } from './aim.ts';
+import { stepExposure, targetExposure } from './exposure.ts';
 import { approach, createFlightState, forwardOf, stepFlight, type FlightInput, type FlightState } from './flight.ts';
 import { collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull, type Hull } from './hazards.ts';
 import { PICKUP_RADIUS, collect, formatTime, isComplete, parseProgress, storageKey, type Progress } from './progress.ts';
@@ -607,22 +608,15 @@ export class Game {
     this.hud.tick(dt);
   }
 
-  /** Eye adaptation: the more of the view the star fills, the lower the exposure and bloom. */
+  /** Eye adaptation near the star: lower exposure and bloom the more of the view it fills. */
   private exposure = 1;
   private adaptExposure(dt: number): void {
-    const sunPos = tmpV.set(...this.world.sun.position);
-    const toSun = tmpV2.copy(sunPos).sub(this.camera.position);
-    const d = Math.max(toSun.length(), this.world.sun.radius * 1.001);
-    toSun.divideScalar(d);
+    const toSun = tmpV2.set(...this.world.sun.position).sub(this.camera.position);
+    const distance = toSun.length();
     const fwd = tmpV3.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const angular = Math.asin(this.world.sun.radius / d);
-    const halfFov = THREE.MathUtils.degToRad(this.camera.fov / 2) * Math.max(1, this.camera.aspect);
-    const off = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun), -1, 1));
-    const inView = THREE.MathUtils.clamp(1 - (off - angular) / halfFov, 0, 1);
-    const size = THREE.MathUtils.clamp(angular / 0.35, 0, 1);
-    const coverage = inView * (0.25 + 0.75 * size);
-    const target = 1 - 0.72 * coverage;
-    this.exposure += (target - this.exposure) * approach(2.5, dt);
+    const offAxis = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun.normalize()), -1, 1));
+    const target = targetExposure({ starRadius: this.world.sun.radius, distance, offAxis, fov: this.camera.fov, aspect: this.camera.aspect });
+    this.exposure = stepExposure(this.exposure, target, dt);
     this.renderer.toneMappingExposure = this.exposure;
     this.bloom.strength = 0.8 * this.exposure * this.exposure;
   }
@@ -630,6 +624,8 @@ export class Game {
   private onResize(): void {
     const w = window.innerWidth;
     const hgt = window.innerHeight;
+    // A hidden or minimised window can report 0×0; keep the last real size instead.
+    if (w === 0 || hgt === 0) return;
     this.renderer.setSize(w, hgt, false);
     this.composer.setSize(w, hgt);
     this.composer.setPixelRatio(this.renderer.getPixelRatio());

@@ -19,7 +19,9 @@ export function moveCursor(c: Cursor, dx: number, dy: number, radius: number, se
 
 /** Cursor offset in pixels → aim in [-1, 1] per axis (screen y grows downward). */
 export function aimOf(c: Cursor, radius: number, invertY: boolean): { x: number; y: number } {
-  const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+  // A hidden or minimised window has no steering circle; 0/0 would feed NaN to the ship.
+  if (!(radius > 0)) return { x: 0, y: 0 };
+  const clamp = (v: number) => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
   const x = clamp(c.x / radius);
   const y = clamp(c.y / radius);
   return { x, y: invertY ? -y : y };

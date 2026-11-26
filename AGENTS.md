@@ -54,6 +54,10 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - **Changing `generate.ts` moves every galaxy.** Saves are keyed by seed and store relic ids;
   if the relic layout changes, bump the `v1` in `storageKey()` so old saves are not applied to
   new positions.
+- **A hidden or minimised window can report 0×0.** `onResize()` skips it, and `aimOf()`,
+  `stepFlight()` and `stepExposure()` treat non-finite values as neutral: one NaN in the flight
+  state or the exposure used to stick forever (frozen ship, black screen). Keep new per-frame
+  state just as defensive.
 - **Pointer lock is optional.** Inside iframes or some embedded browsers it is refused; the game
   then steers by the real cursor position. Esc while locked releases the lock and pauses.
 - **Audio starts only after a click** (browser autoplay rules): the `AudioEngine` is created in
