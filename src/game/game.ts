@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { AudioEngine } from '../audio/engine.ts';
 import { t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
@@ -11,6 +9,7 @@ import { createGpuTimer, type GpuTimer } from '../render/gpuTimer.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { createNebulae, type NebulaView } from '../render/nebula.ts';
 import { createPlanet, type PlanetView } from '../render/planets.ts';
+import { BloomOutputPass, BloomPass } from '../render/post.ts';
 import { SHIP_RADIUS, createShip, type ShipView } from '../render/ship.ts';
 import { createSky, type Sky } from '../render/sky.ts';
 import { createSun, type SunView } from '../render/sun.ts';
@@ -48,7 +47,7 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 7.5, 34);
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer;
-  private readonly bloom: UnrealBloomPass;
+  private readonly bloom: BloomPass;
   private readonly scene = new THREE.Scene();
   // Fog lives on the scene for the whole session and is only thinned to zero outside nebulae:
   // swapping it for null at a nebula edge made every material pick a new shader (a hitch).
@@ -124,9 +123,9 @@ export class Game {
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
+    this.bloom = new BloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
     this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    this.composer.addPass(new BloomOutputPass(this.bloom));
 
     if (this.perf) {
       // The composer renders several passes per frame; count all of them, not just the last.
