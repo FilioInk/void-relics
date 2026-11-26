@@ -32,3 +32,26 @@ test('nebula density is 0 outside, 1 at the core, and halves the scanner range t
   assert.equal(scanRange(0), SCAN_RANGE);
   assert.equal(scanRange(1), SCAN_RANGE / 2);
 });
+
+test('stations, satellite graveyards and the junk ring have regions of their own', () => {
+  const s = w.stations[0]!;
+  assert.deepEqual(regionAt(s.position, w), { kind: 'station', id: s.id, name: s.name });
+  const g = w.graveyards[w.graveyards.length - 1]!;
+  const gr = regionAt(g.center, w);
+  assert.ok(gr.kind === 'graveyard' || gr.kind === 'station', `got ${gr.kind}`);
+  const ring = w.junk!;
+  const home = w.planets.find((p) => p.id === ring.planetId)!;
+  // A point on the middle of the band, in the ring plane.
+  const n = [Math.sin(ring.tilt) * Math.cos(ring.yaw), Math.cos(ring.tilt), Math.sin(ring.tilt) * Math.sin(ring.yaw)] as const;
+  const side: Vec3 = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  const u = [n[1] * side[2] - n[2] * side[1], n[2] * side[0] - n[0] * side[2], n[0] * side[1] - n[1] * side[0]];
+  const len = Math.hypot(u[0]!, u[1]!, u[2]!);
+  const mid = (ring.inner + ring.outer) / 2;
+  const p: Vec3 = [ring.center[0] + (u[0]! / len) * mid, ring.center[1] + (u[1]! / len) * mid, ring.center[2] + (u[2]! / len) * mid];
+  const jr = regionAt(p, w);
+  assert.ok(jr.kind === 'junk' || jr.kind === 'graveyard' || jr.kind === 'station', `got ${jr.kind}`);
+  if (jr.kind === 'junk') assert.equal(jr.name, home.name);
+  // Straight above the planet's pole of the ring is no longer the ring.
+  const above: Vec3 = [ring.center[0] + n[0] * mid, ring.center[1] + n[1] * mid, ring.center[2] + n[2] * mid];
+  assert.notEqual(regionAt(above, w).kind, 'junk');
+});
