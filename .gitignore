@@ -1,0 +1,24 @@
+# --- defaults ---------------------------------------------------------------
+node_modules/
+dist/
+*.tsbuildinfo
+
+# local env files — keys live in these and must never be committed
+.env
+.env.*
+!.env.example
+
+# signing material
+/credentials/
+*.jks
+*.p8
+*.p12
+*.key
+*.keystore
+*.mobileprovision
+
+# agent worktrees
+.claude/worktrees/
+
+# macOS
+.DS_Store
