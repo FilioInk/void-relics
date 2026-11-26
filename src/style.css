@@ -47,7 +47,7 @@ html, body {
 .pip.new { animation: pip-pop 1.2s ease-out; }
 @keyframes pip-pop { 0% { transform: rotate(45deg) scale(2.6); } 100% { transform: rotate(45deg) scale(1); } }
 
-.hud-region { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 15px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink); opacity: 0; transition: opacity 0.8s; white-space: nowrap; }
+.hud-region { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 48px); text-align: center; font-size: 15px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink); opacity: 0; transition: opacity 0.8s; }
 .hud-region.show { opacity: 0.9; }
 .hud-region .sub { display: block; font-size: 11px; color: var(--dim); letter-spacing: 0.25em; margin-top: 4px; }
 
@@ -73,7 +73,7 @@ html, body {
 @keyframes blink { 50% { opacity: 0.25; } }
 
 .toasts { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.toast { padding: 9px 18px; background: var(--panel); border: 1px solid var(--accent); color: var(--ink); font-size: 14px; letter-spacing: 0.08em; animation: toast 4.2s ease forwards; white-space: nowrap; }
+.toast { width: max-content; max-width: calc(100vw - 32px); padding: 9px 18px; background: var(--panel); border: 1px solid var(--accent); color: var(--ink); font-size: 14px; letter-spacing: 0.08em; text-align: center; animation: toast 4.2s ease forwards; }
 .toast b { color: var(--accent); }
 .toast.signal { border-color: var(--amber); }
 .toast.signal b { color: var(--amber); }
@@ -135,6 +135,15 @@ button { font: inherit; cursor: pointer; }
 .legend i { display: block; width: 12px; height: 12px; margin: auto; }
 
 .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; letter-spacing: 0.3em; text-transform: uppercase; color: var(--dim); font-size: 13px; background: var(--bg); }
+
+/* Narrow windows: the centred location banner no longer fits between the relic counter and the
+   galaxy label, so it and the toasts drop below the top row; the key hints sit above the flight
+   panel instead of beside it. */
+@media (max-width: 900px) {
+  .hud-region { top: 122px; }
+  .toasts { top: 176px; }
+  .hud-hint { bottom: 100px; }
+}
 
 @media (max-width: 640px) {
   .hud-flight { gap: 12px; padding: 10px 12px; bottom: 12px; }

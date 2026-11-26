@@ -23,3 +23,9 @@ test('aim maps the circle to [-1, 1], with optional inverted Y', () => {
 test('steering circle fits the shorter screen side', () => {
   assert.equal(steerRadius(1920, 1000), 420);
 });
+
+test('a zero-size window gives no steering instead of NaN', () => {
+  // Regression: steerRadius(0, 0) is 0, and 0/0 used to put NaN into the flight model.
+  assert.deepEqual(aimOf({ x: 0, y: 0 }, steerRadius(0, 0), false), { x: 0, y: 0 });
+  assert.deepEqual(aimOf({ x: 40, y: -10 }, 0, true), { x: 0, y: 0 });
+});

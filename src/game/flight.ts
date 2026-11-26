@@ -80,9 +80,13 @@ const tmpV = new Vector3();
 const tmpDesired = new Vector3();
 const tmpAxis = new Vector3();
 
-export function stepFlight(s: FlightState, input: FlightInput, dt: number): void {
+/** Any non-finite axis reads as centred, so one bad frame cannot poison the state. */
+const axis = (v: number): number => (Number.isFinite(v) ? v : 0);
+
+export function stepFlight(s: FlightState, rawInput: FlightInput, dt: number): void {
   if (!(dt > 0)) return;
   const f = FLIGHT;
+  const input: FlightInput = { ...rawInput, aimX: axis(rawInput.aimX), aimY: axis(rawInput.aimY), strafe: axis(rawInput.strafe), roll: axis(rawInput.roll) };
 
   // Boost spools up slowly and dies quickly.
   s.boost += ((input.boost ? 1 : 0) - s.boost) * approach(input.boost ? f.boostSpoolUp : f.boostSpoolDown, dt);

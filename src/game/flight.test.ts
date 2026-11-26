@@ -63,3 +63,13 @@ test('the ship starts facing the point it was told to look at', () => {
   const s = createFlightState(new Vector3(0, 0, 100), new Vector3(0, 0, 0));
   assert.ok(forwardOf(s.orientation).z < -0.999);
 });
+
+test('one frame of NaN input does not freeze the ship for good', () => {
+  // Regression: a NaN aim used to stick in the spin, so the ship never turned again.
+  const s = createFlightState(new Vector3(), new Vector3(0, 0, -1));
+  stepFlight(s, { ...idle, aimX: Number.NaN, aimY: Number.NaN, strafe: Number.NaN, roll: Number.NaN }, 1 / 60);
+  run({ ...idle, aimX: 0.8 }, 0.5, s);
+  assert.ok(Number.isFinite(s.spin.length()), 'spin is finite');
+  assert.ok(forwardOf(s.orientation).x > 0.2, 'the ship still turns');
+  assert.ok(Number.isFinite(s.position.length()) && Number.isFinite(s.velocity.length()));
+});
