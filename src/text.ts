@@ -1,0 +1,75 @@
+/** Every user-facing string in the game. The game is English-only by decision. */
+
+export const STRINGS = {
+  title: 'VOID RELICS',
+  tagline: 'Twenty alien relics are hidden somewhere in an uncharted star system. Find them all.',
+  launch: 'Launch',
+  continue: 'Continue — {found}/20',
+  newGalaxy: 'New galaxy',
+  galaxy: 'Galaxy #{seed}',
+  loading: 'Generating the system…',
+  controlsTitle: 'Controls',
+  ctlMouse: 'Mouse — steer: the nose follows the cursor',
+  ctlThrust: 'W — thrust (let go and the ship stops)',
+  ctlBrake: 'S — brake / reverse',
+  ctlBoost: 'Space — boost',
+  ctlStrafe: 'A / D — strafe',
+  ctlRoll: 'Q / E — roll',
+  ctlMap: 'M — system map',
+  ctlPause: 'Esc — pause',
+  artifacts: 'Relics',
+  speed: 'Speed',
+  hull: 'Hull',
+  boost: 'BOOST',
+  heatRising: 'Temperature rising',
+  heatCritical: 'HULL OVERHEATING — turn away from the star',
+  hullCritical: 'Hull critical',
+  destroyed: 'Ship destroyed',
+  respawning: 'Restoring at the jump point…',
+  found: 'Relic recovered',
+  signal: 'Relic signal',
+  mapTitle: 'System map',
+  mapClose: 'M — close the map',
+  legendStar: 'Star',
+  legendPlanet: 'Planet',
+  legendBelt: 'Asteroid belt',
+  legendField: 'Asteroid field',
+  legendNebula: 'Nebula',
+  legendWreck: 'Wreck',
+  legendFound: 'Relic recovered',
+  legendSignal: 'Relic signal zone',
+  legendYou: 'You',
+  regionNebula: '{name} Nebula',
+  regionField: '{name} Field',
+  regionBelt: '{name} Belt',
+  regionWreck: 'Wreck of the {name}',
+  regionPlanet: 'Orbit of {name}',
+  regionStar: 'Corona of {name}',
+  regionDeep: 'Deep space',
+  paused: 'Paused',
+  clickToResume: 'Click to continue',
+  victory: 'All twenty relics recovered',
+  victoryTime: 'Time: {time}',
+  keepFlying: 'Keep flying',
+  music: 'Music',
+  sound: 'Sound',
+  on: 'on',
+  off: 'off',
+  sensitivity: 'Mouse sensitivity',
+  invertY: 'Invert Y',
+  needsMouse: 'This game is played with a mouse and keyboard.',
+  noWebgl: 'WebGL is not available in this browser, so the game cannot start.',
+  unitSpeed: 'm/s',
+  unitM: 'm',
+  unitKm: 'km',
+};
+
+export type Key = keyof typeof STRINGS;
+
+export function format(template: string, vars: Record<string, string | number> = {}): string {
+  return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
+}
+
+export function t(key: Key, vars?: Record<string, string | number>): string {
+  return format(STRINGS[key], vars);
+}

@@ -1,0 +1,24 @@
+{
+  "name": "void-relics",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser space-flight exploration game: find 20 alien relics in a procedurally generated star system.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "verify": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.4",
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.4.0"
+  }
+}
