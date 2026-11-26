@@ -36,7 +36,8 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   heat, collisions, hull), `progress.ts` (relics found, saves), `settings.ts`, `aim.ts`,
   `spatialHash.ts`; `game.ts` wires it all to the scene, HUD and audio and runs the loop.
 - `src/render/` — three.js builders: sky, sun, planets, asteroids, nebula smoke, wrecks,
-  relics, the player ship, speed dust. Shared GLSL in `glsl.ts`.
+  relics, the player ship (`ship.ts`, skinned by `plating.ts`), speed dust. Shared GLSL in
+  `glsl.ts`.
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
   the scales and chord progressions.
 - `src/ui/` — HUD, system map, menus. `src/text.ts` — every user-facing string.

@@ -73,7 +73,9 @@ Source to **GitHub Actions**.
 - `src/game/flight.ts` — the arcade flight model: thrust → cruise speed, no thrust → stop,
   boost, turning toward the cursor.
 - `src/render/` — shaders for the planets, the star and the sky; nebula smoke from a baked
-  noise texture; asteroids from displaced icospheres; procedural wrecks and the player ship.
+  noise texture; asteroids from displaced icospheres; procedural wrecks; the player ship in
+  plating painted at start-up (`plating.ts`: panel seams, rivets, wear, a normal map from the
+  same layout), with a framed canopy, wing cannons and belled nozzles.
 - `src/audio/engine.ts` — generative ambient on Web Audio: slow chords in drifting modes, FM
   bells with echo, a drone, cosmic wind, a tension layer near the star; plus engine, impact,
   scanner ping, pickup and explosion sounds.
