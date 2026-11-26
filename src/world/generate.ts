@@ -1,5 +1,5 @@
 import { createRng, type Rng } from '../core/rng.ts';
-import { makeName, roman, type ProperName } from './names.ts';
+import { makeName, roman } from './names.ts';
 
 /**
  * The star system as plain data. Everything the renderer draws and the game collides with is
@@ -15,7 +15,7 @@ export type Ring = { inner: number; outer: number; tilt: number; color: number }
 
 export type Planet = {
   id: string;
-  name: ProperName;
+  name: string;
   kind: PlanetKind;
   position: Vec3;
   radius: number;
@@ -38,16 +38,16 @@ export type Sun = {
   /** Inside this distance the HUD warns that the temperature is rising. */
   warnRadius: number;
   color: number;
-  name: ProperName;
+  name: string;
 };
 
-export type AsteroidCluster = { id: string; name: ProperName; center: Vec3; radius: number; count: number; seed: number };
+export type AsteroidCluster = { id: string; name: string; center: Vec3; radius: number; count: number; seed: number };
 
-export type Belt = { name: ProperName; inner: number; outer: number; thickness: number; count: number; seed: number };
+export type Belt = { name: string; inner: number; outer: number; thickness: number; count: number; seed: number };
 
 export type Nebula = {
   id: string;
-  name: ProperName;
+  name: string;
   center: Vec3;
   radius: number;
   colors: [number, number];
@@ -55,14 +55,14 @@ export type Nebula = {
   seed: number;
 };
 
-export type Wreck = { id: string; name: ProperName; position: Vec3; size: number; pieces: number; seed: number };
+export type Wreck = { id: string; name: string; position: Vec3; size: number; pieces: number; seed: number };
 
 export type ArtifactContext = 'field' | 'belt' | 'nebula' | 'wreck' | 'planet' | 'deep' | 'sun';
 
 export type Artifact = {
   id: string;
   index: number;
-  name: ProperName;
+  name: string;
   position: Vec3;
   context: ArtifactContext;
   /** A circle on the map that contains the artifact somewhere inside it. */
@@ -177,7 +177,7 @@ export function generateWorld(seed: number): World {
         : null;
     return {
       id: `planet-${i}`,
-      name: { latin: `${sun.name.latin} ${roman(i + 1)}`, cyrillic: `${sun.name.cyrillic} ${roman(i + 1)}` },
+      name: `${sun.name} ${roman(i + 1)}`,
       kind,
       position,
       radius,

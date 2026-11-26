@@ -1,5 +1,5 @@
 import { createRng } from '../core/rng.ts';
-import { nameOf, t } from '../i18n/i18n.ts';
+import { t } from '../text.ts';
 import { WORLD_RADIUS, type Asteroid, type World } from '../world/generate.ts';
 import { h } from './dom.ts';
 
@@ -13,7 +13,6 @@ const hex = (c: number, a = 1) => `rgba(${(c >> 16) & 255},${(c >> 8) & 255},${c
 export type MapView = {
   el: HTMLElement;
   draw(player: { x: number; z: number; headingX: number; headingZ: number }, found: readonly string[], time: number): void;
-  relabel(): void;
 };
 
 export function createMap(world: World, rocks: Asteroid[]): MapView {
@@ -28,7 +27,7 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
   const rng = createRng(world.seed ^ 0x3a9);
   const dots = rocks.filter(() => rng.chance(0.35));
 
-  const relabel = () => {
+  {
     title.textContent = t('mapTitle');
     close.textContent = t('mapClose');
     legend.replaceChildren();
@@ -41,12 +40,10 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
     item('background:#5ff5e0;transform:rotate(45deg) scale(0.8);box-shadow:0 0 6px #5ff5e0', t('legendFound'));
     item('border:1px dashed #ffb547;border-radius:50%', t('legendSignal'));
     item('width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #fff', t('legendYou'));
-  };
-  relabel();
+  }
 
   return {
     el,
-    relabel,
     draw(player, found, time) {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = el.clientWidth;
@@ -111,7 +108,7 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
         ctx.fill();
         ctx.fillStyle = 'rgba(223,232,244,0.75)';
         ctx.font = '11px "Exo 2", system-ui, sans-serif';
-        ctx.fillText(nameOf(p.name), px + pr + 5, py + 4);
+        ctx.fillText(p.name, px + pr + 5, py + 4);
       }
 
       // Star and its heat zone.

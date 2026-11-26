@@ -1,7 +1,7 @@
 import './style.css';
 import { Game } from './game/game.ts';
 import { SETTINGS_KEY, defaultSettings, parseSettings, readStore } from './game/settings.ts';
-import { DICTS, detectLang } from './i18n/strings.ts';
+import { t } from './text.ts';
 
 const DEFAULT_SEED = 1337;
 
@@ -20,17 +20,17 @@ function webglAvailable(): boolean {
   }
 }
 
-const settings = parseSettings(readStore(SETTINGS_KEY), defaultSettings(detectLang(navigator.languages ?? [navigator.language])));
+const settings = parseSettings(readStore(SETTINGS_KEY), defaultSettings());
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLElement;
 
 if (!webglAvailable()) {
-  ui.innerHTML = `<div class="loading">${DICTS[settings.lang].noWebgl}</div>`;
+  ui.innerHTML = `<div class="loading">${t('noWebgl')}</div>`;
 } else {
   const debug = new URLSearchParams(window.location.search).has('debug');
   const game = new Game(canvas, ui, seedFromUrl(), settings, debug);
   game.build().catch((err: unknown) => {
     console.error(err);
-    ui.innerHTML = `<div class="loading">${DICTS[settings.lang].noWebgl}</div>`;
+    ui.innerHTML = `<div class="loading">${t('noWebgl')}</div>`;
   });
 }

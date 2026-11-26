@@ -1,9 +1,8 @@
 import { dist, type Nebula, type Vec3, type World } from './generate.ts';
-import type { ProperName } from './names.ts';
 
 /** Where the ship is, for the location banner and the music. */
 export type RegionKind = 'star' | 'wreck' | 'nebula' | 'field' | 'belt' | 'planet' | 'deep';
-export type Region = { kind: RegionKind; id: string; name: ProperName | null };
+export type Region = { kind: RegionKind; id: string; name: string | null };
 
 export function regionAt(p: Vec3, world: World): Region {
   const { sun } = world;

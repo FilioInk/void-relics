@@ -1,4 +1,4 @@
-import { t } from '../i18n/i18n.ts';
+import { t } from '../text.ts';
 import { ARTIFACT_COUNT } from '../world/generate.ts';
 import { h } from './dom.ts';
 
@@ -60,16 +60,11 @@ export function createHud() {
   let lastFound = -1;
   let flashLevel = 0;
 
-  const relabel = () => {
-    relicLabel.textContent = t('artifacts');
-    speedLabel.textContent = t('speed');
-    hullLabel.textContent = t('hull');
-    boostTag.textContent = t('boost');
-    hint.innerHTML = `${t('ctlMap')}<br>${t('ctlPause')}`;
-    const w = warning;
-    warning = 'none';
-    setWarning(w);
-  };
+  relicLabel.textContent = t('artifacts');
+  speedLabel.textContent = t('speed');
+  hullLabel.textContent = t('hull');
+  boostTag.textContent = t('boost');
+  hint.innerHTML = `${t('ctlMap')}<br>${t('ctlPause')}`;
 
   function setWarning(w: Warning) {
     if (w === warning) return;
@@ -88,11 +83,8 @@ export function createHud() {
     }
   }
 
-  relabel();
-
   return {
     el,
-    relabel,
     setWarning,
     setSeedLine(text: string) {
       topRight.textContent = text;

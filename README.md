@@ -1,79 +1,81 @@
-# Void Relics · Реликвии Пустоты
+# Void Relics
 
-Браузерная космическая леталка на three.js: свободный полёт с управлением мышью по
-процедурно сгенерированной звёздной системе и поиск двадцати инопланетных артефактов.
-Мир, текстуры, музыка и звуки создаются на лету из одного числа-сида — в сборке нет ни
-одной картинки и ни одного аудиофайла.
+A browser space-flight game on three.js: free mouse-steered flight through a procedurally
+generated star system, hunting for twenty alien relics. The world, its textures, the music and
+the sound are all generated at runtime from a single seed — the build contains no images and no
+audio files.
 
-![Туманность и артефакт](docs/screenshots/nebula-relic.jpg)
+![Nebula and relic](docs/screenshots/nebula-relic.jpg)
 
 | | |
 |---|---|
-| ![Звезда](docs/screenshots/star.jpg) | ![Карта системы](docs/screenshots/map.jpg) |
-| ![Полёт](docs/screenshots/flight.jpg) | ![Меню](docs/screenshots/menu.jpg) |
+| ![The star](docs/screenshots/star.jpg) | ![System map](docs/screenshots/map.jpg) |
+| ![Flight](docs/screenshots/flight.jpg) | ![Menu](docs/screenshots/menu.jpg) |
 
-## Что в системе
+## What is out there
 
-- **Звезда** с кипящей поверхностью и короной. Пролететь рядом можно, но ближе ~1,9 радиуса
-  корпус начинает греться, у поверхности — сгорает за секунды. Зона нагрева видна на карте.
-- **Шесть планет**: лавовая, пустынная или каменная, землеподобная с облаками и огнями
-  городов, газовые гиганты (часто с кольцами), ледяные.
-- **Пояс астероидов** и четыре **поля** — тысячи камней разной формы, в них можно врезаться.
-- **Четыре туманности** — цветной дым, внутри которого падает видимость, глохнет сканер и
-  иногда вспыхивают разряды.
-- **Обломки кораблей** — разорванные корпуса с мигающими окнами, искрами и облаком мусора.
-- **20 артефактов**: в полях, в поясе, в туманностях, у обломков, на орбитах планет, в
-  глубоком космосе и один — опасно близко к звезде.
+- **A star** with a boiling surface and a corona. You can fly close, but inside ~1.9 radii the
+  hull starts to heat up, and at the surface it burns through in seconds. The heat zone is
+  marked on the map.
+- **Six planets**: lava, desert or rocky, an Earth-like world with clouds and city lights, gas
+  giants (often ringed), ice worlds.
+- **An asteroid belt** and four **asteroid fields** — thousands of solid rocks of different
+  shapes.
+- **Four nebulae** — coloured smoke that cuts visibility, halves the scanner range and now and
+  then flashes with lightning.
+- **Derelict wrecks** — torn hulls with flickering windows, sparks and a cloud of debris.
+- **20 relics**: in the fields, in the belt, inside nebulae, by the wrecks, in planetary orbits,
+  in deep space, and one dangerously close to the star.
 
-## Как играть
+## How to play
 
-| Клавиша | Действие |
+| Key | Action |
 |---|---|
-| Мышь | Руль: нос корабля идёт за курсором, чем дальше от центра — тем резче поворот |
-| W | Тяга. Отпустил — корабль остановился |
-| S | Тормоз / назад |
-| Пробел | Ускорение |
-| A / D | Сдвиг вбок |
-| Q / E | Крен |
-| M (или Tab) | Карта системы |
-| Esc | Пауза |
+| Mouse | Steer: the nose follows the cursor; the further from the centre, the sharper the turn |
+| W | Thrust. Let go and the ship stops |
+| S | Brake / reverse |
+| Space | Boost |
+| A / D | Strafe |
+| Q / E | Roll |
+| M (or Tab) | System map |
+| Esc | Pause |
 
-Артефакт виден издалека как пульсирующая точка, а сканер ловит его сигнал за ~6,5 км (в
-туманности — вдвое ближе). На карте каждый ненайденный артефакт обозначен кругом, где-то
-внутри которого он лежит. Прогресс сохраняется в браузере.
+A relic shows from far away as a faint pulsing point of light, and the scanner picks up its
+signal within ~6.5 km (half that inside a nebula). On the map, every missing relic is drawn as a
+circle it lies somewhere inside. Progress is saved in the browser.
 
-`?seed=12345` в адресе — другая галактика, кнопка «Новая галактика» делает то же со случайным
-числом. Язык: русский, English, español, português (BR), français.
+`?seed=12345` in the URL gives a different galaxy; the **New galaxy** button does the same with a
+random number.
 
-## Запуск
+## Run it
 
 ```bash
 npm install
-npm run dev      # локально, http://localhost:5173
-npm run verify   # typecheck + тесты
-npm run build    # статический сайт в dist/
+npm run dev      # http://localhost:5173
+npm run verify   # typecheck + tests
+npm run build    # static site in dist/
 ```
 
-Нужен Node 24 (`.nvmrc`) и браузер с WebGL 2.
+Needs Node 24 (`.nvmrc`) and a browser with WebGL 2.
 
-## Публикация на GitHub Pages
+## Publishing to GitHub Pages
 
-`.github/workflows/deploy.yml` собирает и публикует сайт при каждом пуше в `main`. На
-бесплатном плане GitHub Pages работает только для публичных репозиториев, поэтому пока
-репозиторий приватный, деплой пропускается. Чтобы включить: сделать репозиторий публичным и
-выбрать Settings → Pages → Source: **GitHub Actions**.
+`.github/workflows/deploy.yml` builds and publishes the site on every push to `main`. On the
+free GitHub plan, Pages only serves public repositories, so while this repository is private the
+deploy is skipped. To switch it on: make the repository public and set Settings → Pages →
+Source to **GitHub Actions**.
 
-## Как устроено
+## How it works
 
-- `src/world/generate.ts` — вся система как данные из сида: орбиты, пояса, туманности,
-  обломки, артефакты, точка старта. Покрыто тестами (детерминизм, артефакты не внутри
-  планет и камней, ровно 20 штук и т. д.).
-- `src/game/flight.ts` — аркадная модель полёта: тяга → крейсерская скорость, без тяги →
-  остановка, ускорение, поворот к курсору.
-- `src/render/` — шейдеры планет, Солнца и неба, дым туманностей из запечённой шумовой
-  текстуры, астероиды из искажённых икосфер, процедурные обломки и корабль игрока.
-- `src/audio/engine.ts` — генеративный эмбиент на Web Audio: медленные аккорды в
-  меняющихся ладах, FM-колокольчики с эхом, гул, «космический ветер», тревожный слой у
-  звезды; плюс звуки двигателя, ударов, сигнала и находки.
+- `src/world/generate.ts` — the whole system as data from the seed: orbits, belt, fields,
+  nebulae, wrecks, relics, spawn point. Covered by tests (determinism, exactly 20 relics, none
+  inside a planet or a rock, and so on).
+- `src/game/flight.ts` — the arcade flight model: thrust → cruise speed, no thrust → stop,
+  boost, turning toward the cursor.
+- `src/render/` — shaders for the planets, the star and the sky; nebula smoke from a baked
+  noise texture; asteroids from displaced icospheres; procedural wrecks and the player ship.
+- `src/audio/engine.ts` — generative ambient on Web Audio: slow chords in drifting modes, FM
+  bells with echo, a drone, cosmic wind, a tension layer near the star; plus engine, impact,
+  scanner ping, pickup and explosion sounds.
 
-Подробности для разработки — в [AGENTS.md](AGENTS.md).
+Development notes are in [AGENTS.md](AGENTS.md).

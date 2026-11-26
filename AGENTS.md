@@ -31,7 +31,7 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - `src/core/` — seeded RNG and CPU noise.
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
   wrecks, the 20 relics, spawn), `regions.ts` (where the ship is, nebula density, scan range),
-  `names.ts` (generated names in Latin and Cyrillic).
+  `names.ts` (generated names).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
   heat, collisions, hull), `progress.ts` (relics found, saves), `settings.ts`, `aim.ts`,
   `spatialHash.ts`; `game.ts` wires it all to the scene, HUD and audio and runs the loop.
@@ -39,7 +39,7 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   relics, the player ship, speed dust. Shared GLSL in `glsl.ts`.
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
   the scales and chord progressions.
-- `src/ui/` — HUD, system map, menus. `src/i18n/` — all strings in ru, en, es, pt-BR, fr.
+- `src/ui/` — HUD, system map, menus. `src/text.ts` — every user-facing string.
 - `.github/workflows/` — `ci.yml` runs verify on every PR; `deploy.yml` publishes to Pages.
 
 ## Things that will bite you
@@ -60,5 +60,7 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   `launch()`.
 - **GitHub Pages needs a public repository** on the FilioInk free plan; `deploy.yml` skips
   itself while the repository is private.
+- **The game is English-only, by the owner's decision** — UI, README, everything. Do not add
+  translations or a language picker; new strings go into `src/text.ts` in English.
 - The only network request at runtime is the Exo 2 font from Google Fonts; the game falls back
   to system fonts without it.

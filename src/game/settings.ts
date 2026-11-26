@@ -1,11 +1,9 @@
-import { LANGS, type Lang } from '../i18n/strings.ts';
-
-export type Settings = { lang: Lang; music: boolean; sound: boolean; sensitivity: number; invertY: boolean };
+export type Settings = { music: boolean; sound: boolean; sensitivity: number; invertY: boolean };
 
 export const SETTINGS_KEY = 'void-relics:settings';
 
-export function defaultSettings(lang: Lang): Settings {
-  return { lang, music: true, sound: true, sensitivity: 1, invertY: false };
+export function defaultSettings(): Settings {
+  return { music: true, sound: true, sensitivity: 1, invertY: false };
 }
 
 /** Saved settings, field by field: one broken value does not throw the rest away. */
@@ -19,10 +17,8 @@ export function parseSettings(raw: string | null, fallback: Settings): Settings 
   } catch {
     return { ...fallback };
   }
-  const lang = (LANGS as readonly unknown[]).includes(d['lang']) ? (d['lang'] as Lang) : fallback.lang;
   const sens = typeof d['sensitivity'] === 'number' && Number.isFinite(d['sensitivity']) ? Math.min(2.5, Math.max(0.3, d['sensitivity'])) : fallback.sensitivity;
   return {
-    lang,
     music: typeof d['music'] === 'boolean' ? d['music'] : fallback.music,
     sound: typeof d['sound'] === 'boolean' ? d['sound'] : fallback.sound,
     sensitivity: sens,

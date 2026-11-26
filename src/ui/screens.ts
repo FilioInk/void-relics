@@ -1,5 +1,4 @@
-import { lang, t } from '../i18n/i18n.ts';
-import { LANGS, LANG_NAMES, type Lang } from '../i18n/strings.ts';
+import { t } from '../text.ts';
 import type { Settings } from '../game/settings.ts';
 import { h } from './dom.ts';
 
@@ -26,20 +25,11 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
     const change = (patch: Partial<Settings>) => handlers.onSettings({ ...state().settings, ...patch });
     const toggle = (on: boolean, flip: () => void) =>
       h('button', { class: `toggle ${on ? 'on' : ''}`, text: on ? t('on') : t('off'), onclick: () => flip() });
-    const select = h('select', {
-      onchange: (e: Event) => change({ lang: (e.target as HTMLSelectElement).value as Lang }),
-    });
-    for (const l of LANGS) {
-      const o = h('option', { value: l, text: LANG_NAMES[l] });
-      if (l === s.lang) o.selected = true;
-      select.append(o);
-    }
     const sens = h('input', { type: 'range', min: 0.3, max: 2.5, step: 0.05, value: s.sensitivity });
     sens.addEventListener('change', () => change({ sensitivity: Number(sens.value) }));
     return h(
       'div',
       { class: 'settings' },
-      h('label', { text: t('language') }), select,
       h('label', { text: t('music') }), toggle(s.music, () => change({ music: !s.music })),
       h('label', { text: t('sound') }), toggle(s.sound, () => change({ sound: !s.sound })),
       h('label', { text: t('sensitivity') }), sens,
@@ -133,9 +123,8 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
     get current() {
       return current;
     },
-    /** Re-render in place, e.g. after a language or settings change. */
+    /** Re-render in place, e.g. after a settings change. */
     refresh() {
-      document.title = lang() === 'en' ? 'Void Relics' : `${t('title')} · Void Relics`;
       render();
     },
   };

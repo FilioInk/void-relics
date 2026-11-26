@@ -4,8 +4,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { AudioEngine } from '../audio/engine.ts';
-import { nameOf, setLang, t } from '../i18n/i18n.ts';
-import type { Key } from '../i18n/strings.ts';
+import { t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
 import { createAsteroids } from '../render/asteroids.ts';
 import { createDust, type DustView } from '../render/dust.ts';
@@ -107,7 +106,6 @@ export class Game {
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
-    setLang(settings.lang);
     this.screens = createScreens(
       {
         onLaunch: () => this.launch(),
@@ -256,18 +254,10 @@ export class Game {
   }
 
   private applySettings(next: Settings): void {
-    const langChanged = next.lang !== this.settings.lang;
     this.settings = next;
     writeStore(SETTINGS_KEY, JSON.stringify(next));
     this.audio?.setMusic(next.music);
     this.audio?.setSound(next.sound);
-    if (langChanged) {
-      setLang(next.lang);
-      this.hud.relabel();
-      this.map.relabel();
-      this.hud.setSeedLine(t('galaxy', { seed: this.seed }));
-      this.regionId = '';
-    }
     this.screens.refresh();
   }
 
@@ -474,7 +464,7 @@ export class Game {
       const r = regionAt([f.position.x, f.position.y, f.position.z], world);
       if (r.id !== this.regionId) {
         this.regionId = r.id;
-        this.hud.setRegion(t(REGION_KEYS[r.kind], { name: r.name ? nameOf(r.name) : '' }), '');
+        this.hud.setRegion(t(REGION_KEYS[r.kind], { name: r.name ?? '' }), '');
       }
     }
 
@@ -508,7 +498,7 @@ export class Game {
     this.audio?.pickup();
     this.hud.flash('rgba(95,245,224,0.8)', 0.45);
     this.hud.setRelics(this.progress.found.length);
-    this.hud.toast(`${t('found')}: <b>${escapeHtml(nameOf(a.name))}</b> · ${this.progress.found.length}/20`, 'found');
+    this.hud.toast(`${t('found')}: <b>${escapeHtml(a.name)}</b> · ${this.progress.found.length}/20`, 'found');
     this.save();
   }
 

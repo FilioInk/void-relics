@@ -116,7 +116,7 @@ button { font: inherit; cursor: pointer; }
 .section-title { font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--dim); margin: 0 0 10px; }
 .settings { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; align-items: center; font-size: 14px; }
 .settings label { color: var(--dim); }
-.settings select, .settings input[type='range'] { width: 100%; font: inherit; color: var(--ink); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--faint); border-radius: 3px; padding: 6px 8px; }
+.settings input[type='range'] { width: 100%; font: inherit; color: var(--ink); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--faint); border-radius: 3px; padding: 6px 8px; }
 .settings input[type='range'] { padding: 0; accent-color: var(--accent); }
 .toggle { justify-self: start; padding: 5px 14px; color: var(--ink); background: transparent; border: 1px solid var(--faint); border-radius: 3px; letter-spacing: 0.1em; text-transform: uppercase; font-size: 12px; }
 .toggle.on { border-color: var(--accent); color: var(--accent); }
