@@ -1,0 +1,34 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { generateWorld, type Vec3 } from './generate.ts';
+import { SCAN_RANGE, nebulaDensityAt, regionAt, scanRange } from './regions.ts';
+
+const w = generateWorld(1337);
+
+test('each landmark is recognised from its own centre', () => {
+  assert.equal(regionAt([0, 0, w.sun.radius * 2], w).kind, 'star');
+  const neb = w.nebulae[0]!;
+  const r = regionAt(neb.center, w);
+  assert.ok(r.kind === 'nebula' || r.kind === 'wreck', `got ${r.kind}`);
+  const wr = w.wrecks[w.wrecks.length - 1]!;
+  assert.equal(regionAt(wr.position, w).id, wr.id);
+  const c = w.clusters[3]!;
+  const cr = regionAt(c.center, w);
+  assert.ok(cr.kind === 'field' || cr.kind === 'wreck');
+});
+
+test('the belt is found in the plane between its radii, and deep space far above it', () => {
+  const mid = (w.belt.inner + w.belt.outer) / 2;
+  const spots: Vec3[] = [[mid, 0, 0], [0, 0, mid], [-mid, 0, 0], [0, 0, -mid]];
+  const kinds = spots.map((p) => regionAt(p, w).kind);
+  assert.ok(kinds.includes('belt'), kinds.join(','));
+  assert.equal(regionAt([0, 30000, 0], w).kind, 'deep');
+});
+
+test('nebula density is 0 outside, 1 at the core, and halves the scanner range there', () => {
+  const n = w.nebulae[0]!;
+  assert.equal(nebulaDensityAt(n.center, w.nebulae).density, 1);
+  assert.equal(nebulaDensityAt([n.center[0] + n.radius * 2, n.center[1], n.center[2]], [n]).density, 0);
+  assert.equal(scanRange(0), SCAN_RANGE);
+  assert.equal(scanRange(1), SCAN_RANGE / 2);
+});
