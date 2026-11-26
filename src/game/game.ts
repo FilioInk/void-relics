@@ -50,6 +50,9 @@ export class Game {
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly scene = new THREE.Scene();
+  // Fog lives on the scene for the whole session and is only thinned to zero outside nebulae:
+  // swapping it for null at a nebula edge made every material pick a new shader (a hitch).
+  private readonly fog = new THREE.FogExp2(0x000000, 0);
   private readonly camera = new THREE.PerspectiveCamera(70, 1, 0.5, 2_000_000);
   private readonly clock = new THREE.Timer();
   private readonly ui: HTMLElement;
@@ -161,6 +164,7 @@ export class Game {
 
     this.sky = createSky(this.renderer, this.seed);
     this.scene.background = this.sky.background;
+    this.scene.fog = this.fog;
     this.scene.add(this.sky.stars);
 
     this.sun = createSun(world.sun);
@@ -512,12 +516,9 @@ export class Game {
 
     // Fog inside nebulae, tinted by the cloud.
     if (neb.nebula && neb.density > 0) {
-      const color = new THREE.Color(neb.nebula.colors[1]).multiplyScalar(0.12);
-      if (!(this.scene.fog instanceof THREE.FogExp2)) this.scene.fog = new THREE.FogExp2(color, 0);
-      const fog = this.scene.fog as THREE.FogExp2;
-      fog.color.copy(color);
-      fog.density = 0.00022 * neb.density;
-    } else this.scene.fog = null;
+      this.fog.color.set(neb.nebula.colors[1]).multiplyScalar(0.12);
+      this.fog.density = 0.00022 * neb.density;
+    } else this.fog.density = 0;
 
     // Location banner.
     this.regionTimer -= dt;
@@ -659,7 +660,7 @@ export class Game {
     this.bank += (f.spin.y * 0.55 - this.bank) * approach(4, dt);
     const idle = this.state === 'menu' ? 0.35 : 0;
     this.ship.update(t, Math.max(f.throttle, idle), f.boost, this.bank);
-    const tint = this.scene.fog ? new THREE.Color(1.0, 0.85, 1.0) : WHITE;
+    const tint = this.fog.density > 0 ? NEBULA_DUST : WHITE;
     this.dust.update(this.camera, f.velocity, tint);
     if (simulate || this.state === 'menu') {
       const radius = steerRadius(window.innerWidth, window.innerHeight);
@@ -796,6 +797,7 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpV3 = new THREE.Vector3();
 const WHITE = new THREE.Color(1, 1, 1);
+const NEBULA_DUST = new THREE.Color(1.0, 0.85, 1.0);
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
