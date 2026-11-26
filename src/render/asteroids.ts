@@ -10,12 +10,12 @@ import { ASTEROID_VARIANTS, type Asteroid } from '../world/generate.ts';
  * are culled.
  */
 
-function rockGeometry(seed: number, detail: number): THREE.BufferGeometry {
+function rockGeometry(seed: number): THREE.BufferGeometry {
   const rng = createRng(seed);
   const noise = createNoise3(seed);
   // Flat shading takes its normals from screen-space derivatives, so normals and uvs are dead
   // weight; without them the icosphere's shared corners merge and each is shaded once, not ~6×.
-  const base = new THREE.IcosahedronGeometry(1, detail);
+  const base = new THREE.IcosahedronGeometry(1, 3);
   base.deleteAttribute('normal');
   base.deleteAttribute('uv');
   const geo = mergeVertices(base);
@@ -54,7 +54,7 @@ const CHUNK = 9000;
 
 export function createAsteroids(rocks: Asteroid[], seed: number): AsteroidView {
   const group = new THREE.Group();
-  const geos = Array.from({ length: ASTEROID_VARIANTS }, (_, i) => rockGeometry(seed * 31 + i * 977, 3));
+  const geos = Array.from({ length: ASTEROID_VARIANTS }, (_, i) => rockGeometry(seed * 31 + i * 977));
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0.04, flatShading: true });
 
   // chunk key → variant → rocks

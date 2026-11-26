@@ -118,15 +118,14 @@ export class Game {
     this.settings = settings;
     this.debug = debug;
     this.perf = perf ? new PerfStats() : null;
-    // No antialias: the scene is drawn into the composer's own (single-sample) target and the
-    // canvas only ever receives one full-screen quad, so a multisampled canvas bought nothing
-    // but a resolve of every pixel every frame.
     // Depth for a scene from 0.5 m to 400 km: reversed Z into a float depth buffer where the
     // browser has EXT_clip_control (no fragment-shader depth writes, so early-Z works), and
     // the logarithmic depth buffer elsewhere.
     const reversed = supportsReversedDepth();
     this.renderer = new THREE.WebGLRenderer({
       canvas,
+      // The scene is drawn into the composer's single-sample target and the canvas only ever
+      // receives one full-screen quad: multisampling it bought nothing but a resolve per frame.
       antialias: false,
       reversedDepthBuffer: reversed,
       logarithmicDepthBuffer: !reversed,
