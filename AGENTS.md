@@ -19,6 +19,19 @@ npm run preview      # serve dist/ locally
 
 URL parameters: `?seed=<integer>` picks the galaxy (default 1337), `?debug=1` exposes
 `window.__vr` (teleport, press keys, aim, open the map) for poking the game from the console.
+`?perf=1` shows a corner readout: FPS, frame / CPU / GPU ms (average and p95 over the last 240
+frames), draw calls, triangles and shader programs from `renderer.info`.
+
+### Measuring performance
+
+Use both: `?debug=1&perf=1`. Four fixed benchmark spots exist for every seed
+(`src/game/benchSpots.ts`): `__vr.spot('spawn' | 'nebula' | 'belt' | 'star')` flies there and
+stops. Let it settle ~3 s (shaders compile, exposure adapts), call `__vr.perfReset()`, wait, read
+`__vr.perf()`. On a 60 Hz display FPS is capped by vsync, so compare **GPU ms** (timer queries;
+`null` where the browser hides `EXT_disjoint_timer_query_webgl2`). `__vr.still(t)` pins the clock
+(no animation, exposure snapped) and `__vr.capture()` resolves to a PNG of the next frame: two
+captures of the same spot and `t` are pixel-identical, so a rendering change can be diffed exactly.
+`__vr.renderer` and `__vr.composer` are there for toggling passes from the console.
 
 ## Verify
 

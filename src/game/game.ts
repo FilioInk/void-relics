@@ -7,6 +7,7 @@ import { AudioEngine } from '../audio/engine.ts';
 import { t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
 import { createAsteroids } from '../render/asteroids.ts';
+import { createGpuTimer, type GpuTimer } from '../render/gpuTimer.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { createNebulae, type NebulaView } from '../render/nebula.ts';
 import { createPlanet, type PlanetView } from '../render/planets.ts';
@@ -16,10 +17,13 @@ import { createSun, type SunView } from '../render/sun.ts';
 import { createWrecks, type Collider, type WreckView } from '../render/wrecks.ts';
 import { createHud, type Hud, type Marker, type Warning } from '../ui/hud.ts';
 import { createMap, type MapView } from '../ui/map.ts';
+import { createPerfOverlay, type PerfOverlay } from '../ui/perf.ts';
+import { PerfStats } from '../ui/perfStats.ts';
 import { createScreens } from '../ui/screens.ts';
 import { generateAsteroids, generateWorld, type World } from '../world/generate.ts';
 import { nebulaDensityAt, regionAt, scanRange, type Region } from '../world/regions.ts';
 import { aimOf, moveCursor, steerRadius, type Cursor } from './aim.ts';
+import { BENCH_SPOTS, benchSpot, type BenchSpotName } from './benchSpots.ts';
 import { stepExposure, targetExposure } from './exposure.ts';
 import { approach, createFlightState, forwardOf, stepFlight, type FlightInput, type FlightState } from './flight.ts';
 import { collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull, type Hull } from './hazards.ts';
@@ -90,11 +94,22 @@ export class Game {
   private settings: Settings;
   private readonly debug: boolean;
 
-  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean) {
+  // ?perf=1: frame timing and renderer counters.
+  private readonly perf: PerfStats | null;
+  private perfOverlay: PerfOverlay | null = null;
+  private gpuTimer: GpuTimer | null = null;
+  private readonly gpuSamples: number[] = [];
+  private lastFrameAt = NaN;
+  // ?debug=1: a pinned clock for reproducible screenshots, and a pending canvas capture.
+  private stillTime: number | null = null;
+  private captureNext: ((dataUrl: string) => void) | null = null;
+
+  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean, perf = false) {
     this.ui = ui;
     this.seed = seed;
     this.settings = settings;
     this.debug = debug;
+    this.perf = perf ? new PerfStats() : null;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -106,6 +121,15 @@ export class Game {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
+
+    if (this.perf) {
+      // The composer renders several passes per frame; count all of them, not just the last.
+      this.renderer.info.autoReset = false;
+      this.gpuTimer = createGpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
+      this.perf.gpuSupported = this.gpuTimer.supported;
+      this.perfOverlay = createPerfOverlay();
+      this.ui.append(this.perfOverlay.el);
+    }
 
     this.screens = createScreens(
       {
@@ -345,9 +369,23 @@ export class Game {
   // --- frame -----------------------------------------------------------------------------
 
   private frame(): void {
+    const startedAt = performance.now();
+    if (this.perf) {
+      this.perf.frame.push(startedAt - this.lastFrameAt);
+      this.lastFrameAt = startedAt;
+      this.renderer.info.reset();
+      this.gpuTimer?.begin();
+    }
     this.clock.update();
-    const dt = Math.min(0.05, this.clock.getDelta());
+    let dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
+    if (this.stillTime !== null) {
+      // Pinned clock: every animation shows the same instant, nothing moves.
+      dt = 0;
+      this.time = this.stillTime;
+      this.shake = 0;
+      this.nebulae.calm();
+    }
     const simulate = this.state === 'playing' || this.state === 'dead' || this.state === 'victory';
 
     if (simulate) this.simulate(dt);
@@ -361,6 +399,29 @@ export class Game {
       this.map.draw({ x: this.flight.position.x, z: this.flight.position.z, headingX: fwd.x, headingZ: fwd.z }, this.progress.found, this.time);
     }
     this.composer.render(dt);
+    if (this.captureNext) {
+      // Read the canvas in the same task as the render, before the browser clears it.
+      this.captureNext(this.renderer.domElement.toDataURL('image/png'));
+      this.captureNext = null;
+    }
+    if (this.perf) this.endPerfFrame(startedAt, dt);
+  }
+
+  private endPerfFrame(startedAt: number, dt: number): void {
+    const perf = this.perf!;
+    this.gpuTimer?.end();
+    perf.cpu.push(performance.now() - startedAt);
+    if (this.gpuTimer) for (const ms of this.gpuTimer.poll(this.gpuSamples)) perf.gpu.push(ms);
+    const info = this.renderer.info;
+    perf.counts = {
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      programs: info.programs?.length ?? 0,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      pixelRatio: this.renderer.getPixelRatio(),
+    };
+    this.perfOverlay?.update(() => perf.report(), dt > 0 ? dt : 1 / 60);
   }
 
   private simulate(dt: number): void {
@@ -589,7 +650,7 @@ export class Game {
     this.fill.position.copy(this.camera.position);
     this.fill.target.position.copy(f.position);
     this.sun.update(t, this.camera);
-    for (const p of this.planets) p.update(dt, t);
+    for (const p of this.planets) p.update(t);
     this.nebulae.update(t, dt);
     this.wrecks.update(t);
     this.artifacts.update(t, dt, window.innerHeight * this.renderer.getPixelRatio());
@@ -616,7 +677,8 @@ export class Game {
     const fwd = tmpV3.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
     const offAxis = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun.normalize()), -1, 1));
     const target = targetExposure({ starRadius: this.world.sun.radius, distance, offAxis, fov: this.camera.fov, aspect: this.camera.aspect });
-    this.exposure = stepExposure(this.exposure, target, dt);
+    // A pinned clock snaps straight to the target so repeated captures match exactly.
+    this.exposure = this.stillTime !== null ? target : stepExposure(this.exposure, target, dt);
     this.renderer.toneMappingExposure = this.exposure;
     this.bloom.strength = 0.8 * this.exposure * this.exposure;
   }
@@ -637,9 +699,21 @@ export class Game {
   /** ?debug=1: a handle for poking the game from the console. */
   private exposeDebug(): void {
     const self = this;
+    const teleport = (x: number, y: number, z: number, lookAt?: [number, number, number]) => {
+      const look = lookAt ? new THREE.Vector3(...lookAt) : new THREE.Vector3(0, 0, 0);
+      self.flight = createFlightState(new THREE.Vector3(x, y, z), look);
+      self.camQuat.copy(self.flight.orientation);
+    };
+    const play = () => {
+      self.state = 'playing';
+      self.screens.show('none');
+      self.hud.show(true);
+    };
     (window as unknown as Record<string, unknown>)['__vr'] = {
       world: this.world,
       scene: this.scene,
+      renderer: this.renderer,
+      composer: this.composer,
       get state() {
         return self.state;
       },
@@ -650,14 +724,10 @@ export class Game {
         return self.hull;
       },
       teleport(x: number, y: number, z: number, lookAt?: [number, number, number]) {
-        const look = lookAt ? new THREE.Vector3(...lookAt) : new THREE.Vector3(0, 0, 0);
-        self.flight = createFlightState(new THREE.Vector3(x, y, z), look);
-        self.camQuat.copy(self.flight.orientation);
+        teleport(x, y, z, lookAt);
       },
       play() {
-        self.state = 'playing';
-        self.screens.show('none');
-        self.hud.show(true);
+        play();
       },
       press(code: string, down = true) {
         if (down) self.keys.add(code);
@@ -668,6 +738,34 @@ export class Game {
       },
       map(open: boolean) {
         if (open !== (self.state === 'map')) self.toggleMap();
+      },
+      /** Fly to a benchmark spot ('spawn' | 'nebula' | 'belt' | 'star'), stopped, in play. */
+      spot(name: BenchSpotName) {
+        if (!BENCH_SPOTS.includes(name)) throw new Error(`spot: one of ${BENCH_SPOTS.join(', ')}`);
+        const s = benchSpot(self.world, name);
+        teleport(...s.position, s.lookAt);
+        play();
+        self.keys.clear();
+        self.cursor = { x: 0, y: 0 };
+        return s;
+      },
+      /** With ?perf=1: the rolling frame report, and a way to start a fresh window. */
+      perf() {
+        return self.perf?.report() ?? null;
+      },
+      perfReset() {
+        self.perf?.reset();
+        self.lastFrameAt = NaN;
+      },
+      /** Pin the clock at t seconds (null to let it run): the same picture on every run. */
+      still(t: number | null) {
+        self.stillTime = t === null || !Number.isFinite(t) ? null : t;
+      },
+      /** A PNG data URL of the next rendered frame. */
+      capture(): Promise<string> {
+        return new Promise((resolve) => {
+          self.captureNext = resolve;
+        });
       },
     };
   }

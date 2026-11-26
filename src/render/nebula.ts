@@ -96,7 +96,12 @@ const FRAG = /* glsl */ `
     ${FRAG_TAIL}
   }`;
 
-export type NebulaView = { group: THREE.Group; update(t: number, dt: number): void };
+export type NebulaView = {
+  group: THREE.Group;
+  update(t: number, dt: number): void;
+  /** Put out every lightning flash (the debug pinned clock uses it for repeatable frames). */
+  calm(): void;
+};
 
 export function createNebulae(nebulae: Nebula[], seed: number): NebulaView {
   const group = new THREE.Group();
@@ -172,6 +177,9 @@ export function createNebulae(nebulae: Nebula[], seed: number): NebulaView {
 
   return {
     group,
+    calm() {
+      for (const f of flashes) f.uniform.value.w = 0;
+    },
     update(t, dt) {
       for (const u of timeUniforms) u.value = t;
       for (const f of flashes) {

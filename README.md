@@ -45,7 +45,8 @@ signal within ~6.5 km (half that inside a nebula). On the map, every missing rel
 circle it lies somewhere inside. Progress is saved in the browser.
 
 `?seed=12345` in the URL gives a different galaxy; the **New galaxy** button does the same with a
-random number.
+random number. `?perf=1` shows frame rate, frame / CPU / GPU time and draw-call counts in the
+corner.
 
 ## Run it
 

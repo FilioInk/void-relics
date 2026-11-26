@@ -227,7 +227,7 @@ function ringMaterial(planet: Planet, center: THREE.Vector3, sun: THREE.Vector3)
   });
 }
 
-export type PlanetView = { group: THREE.Group; update(dt: number, t: number): void };
+export type PlanetView = { group: THREE.Group; update(t: number): void };
 
 export function createPlanet(planet: Planet, sunPos: THREE.Vector3): PlanetView {
   const group = new THREE.Group();
@@ -271,10 +271,11 @@ export function createPlanet(planet: Planet, sunPos: THREE.Vector3): PlanetView 
 
   return {
     group,
-    update(dt, t) {
-      body.rotation.y += planet.spin * dt;
+    update(t) {
+      // From the clock rather than accumulated per frame, so a pinned clock gives the same picture.
+      body.rotation.y = planet.spin * t;
       if (clouds) {
-        clouds.rotation.y += planet.spin * 1.3 * dt;
+        clouds.rotation.y = planet.spin * 1.3 * t;
         (clouds.material as THREE.ShaderMaterial).uniforms['uTime']!.value = t;
       }
     },
