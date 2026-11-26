@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashString } from '../core/rng.ts';
+import { readFileSync } from 'node:fs';
 import { ARTIFACT_COUNT, JUNK_VARIANTS, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateJunk, generateWorld, junkNormal, type Vec3 } from './generate.ts';
 
 const SEEDS = [1, 7, 1337, 2024, 99991, 123456789];
@@ -64,20 +64,31 @@ test('exactly one artifact is placed as a dare near the star, inside the heat zo
   assert.equal(hot[0]!.context, 'sun');
 });
 
-// Hashes of generateWorld() and generateAsteroids() taken before stations, satellites and the
-// junk ring existed. Saves point at relic ids by position, so the old layout must not move.
-const BEFORE_DEBRIS: Record<number, [string, string]> = {
-  1: ['4a2142ba', '58a4b409'],
-  1337: ['b7268e5b', 'b5ccff3c'],
-  99991: ['dcfe9de', '60945e92'],
+// The layout of three galaxies as it was before stations, satellites and the junk ring existed
+// (positions, sizes, names, the asteroid count and a sample of rocks). Saves point at relics by
+// id, so none of this may move. Numbers are compared to a centimetre: Math.sin and friends
+// differ in the last bit between CPUs, so an exact hash passed on a Mac and failed on CI.
+const BEFORE_DEBRIS = JSON.parse(readFileSync(new URL('./fixtures/before-debris.json', import.meta.url), 'utf8')) as Record<
+  string,
+  { points: number[][]; sizes: number[]; names: string[]; contexts: string[]; rocks: number; rockSample: number[][] }
+>;
+
+const near = (a: number[], b: number[], what: string) => {
+  assert.equal(a.length, b.length, what);
+  a.forEach((v, i) => assert.ok(Math.abs(v - b[i]!) < 0.01, `${what}[${i}]: ${v} vs ${b[i]}`));
 };
 
 test('adding debris moved nothing that was already in the system', () => {
-  for (const [seed, [world, rocks]] of Object.entries(BEFORE_DEBRIS)) {
+  for (const [seed, before] of Object.entries(BEFORE_DEBRIS)) {
     const w = generateWorld(Number(seed));
-    const { stations: _s, graveyards: _g, junk: _j, ...old } = w;
-    assert.equal(hashString(JSON.stringify(old)).toString(16), world, `world ${seed}`);
-    assert.equal(hashString(JSON.stringify(generateAsteroids(w))).toString(16), rocks, `rocks ${seed}`);
+    const rocks = generateAsteroids(w);
+    const points = [w.sun.position, ...w.planets.map((p) => p.position), ...w.clusters.map((c) => c.center), ...w.nebulae.map((n) => n.center), ...w.wrecks.map((x) => x.position), ...w.artifacts.map((a) => a.position), w.spawn.position];
+    near(points.flat(), before.points.flat(), `seed ${seed} positions`);
+    near([w.sun.radius, ...w.planets.map((p) => p.radius), ...w.clusters.map((c) => c.radius), ...w.nebulae.map((n) => n.radius), ...w.wrecks.map((x) => x.size)], before.sizes, `seed ${seed} sizes`);
+    assert.deepEqual([w.sun.name, w.belt.name, ...w.planets.map((p) => p.name), ...w.clusters.map((c) => c.name), ...w.nebulae.map((n) => n.name), ...w.wrecks.map((x) => x.name), ...w.artifacts.map((a) => a.name)], before.names);
+    assert.deepEqual(w.artifacts.map((a) => a.context), before.contexts);
+    assert.equal(rocks.length, before.rocks, `seed ${seed} rock count`);
+    near(rocks.filter((_, i) => i % 300 === 0).flatMap((r) => [...r.position, r.radius]), before.rockSample.flat(), `seed ${seed} rocks`);
   }
 });
 

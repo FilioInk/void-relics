@@ -72,8 +72,10 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - **Changing `generate.ts` moves every galaxy.** Saves are keyed by seed and store relic ids;
   if the relic layout changes, bump the `v1` in `storageKey()` so old saves are not applied to
   new positions. To add content without moving anything, draw it from a new `root.fork(...)`
-  and place it after the relics, as the debris does; the `BEFORE_DEBRIS` hashes in
-  `generate.test.ts` fail if the old layout shifts.
+  and place it after the relics, as the debris does; `generate.test.ts` compares the layout with
+  `src/world/fixtures/before-debris.json` and fails if it shifts. Compare floats with a
+  tolerance, never by exact hash: `Math.sin` and friends differ in the last bit between a Mac
+  and the Linux CI.
 - **A hidden or minimised window can report 0×0.** `onResize()` skips it, and `aimOf()`,
   `stepFlight()` and `stepExposure()` treat non-finite values as neutral: one NaN in the flight
   state or the exposure used to stick forever (frozen ship, black screen). Keep new per-frame
