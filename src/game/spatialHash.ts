@@ -26,6 +26,23 @@ export class SpatialHash<T extends { position: [number, number, number]; radius:
         }
   }
 
+  /** Takes an item out of every cell it was put in. */
+  remove(item: T): void {
+    const s = this.cellSize;
+    const [x, y, z] = item.position;
+    const r = item.radius;
+    for (let ix = Math.floor((x - r) / s); ix <= Math.floor((x + r) / s); ix++)
+      for (let iy = Math.floor((y - r) / s); iy <= Math.floor((y + r) / s); iy++)
+        for (let iz = Math.floor((z - r) / s); iz <= Math.floor((z + r) / s); iz++) {
+          const k = this.key(ix, iy, iz);
+          const list = this.cells.get(k);
+          if (!list) continue;
+          const i = list.indexOf(item);
+          if (i >= 0) list.splice(i, 1);
+          if (list.length === 0) this.cells.delete(k);
+        }
+  }
+
   /** Items whose bounding sphere may touch the query sphere (deduplicated). */
   query(x: number, y: number, z: number, radius: number, out: T[] = []): T[] {
     out.length = 0;

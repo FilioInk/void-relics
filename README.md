@@ -40,6 +40,7 @@ audio files.
 | W | Thrust. Let go and the ship stops |
 | S | Brake / reverse |
 | Space | Boost |
+| Left mouse / F | Fire lasers |
 | A / D | Strafe |
 | Q / E | Roll |
 | M (or Tab) | System map |
@@ -48,6 +49,14 @@ audio files.
 A relic shows from far away as a faint pulsing point of light, and the scanner picks up its
 signal within ~6.5 km (half that inside a nebula). On the map, every missing relic is drawn as a
 circle it lies somewhere inside. Progress is saved in the browser.
+
+**Lasers.** Twin wing guns fire red bolts at eight shots a second; hold too long and they
+overheat and lock until they cool. The red cross ahead of the nose is where both barrels meet.
+Smaller rocks (up to ~140 m), satellites and loose junk break apart under fire — the
+mountains and station hulls do not. Some of them hold **salvage** (void crystals, data cores)
+that drifts out and flies to the ship. The relics in asteroid fields and by the wrecks are
+**sealed in rock**: the scanner finds them, but you have to shoot the shell open first. What
+you break stays broken.
 
 `?seed=12345` in the URL gives a different galaxy; the **New galaxy** button does the same with a
 random number.

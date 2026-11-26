@@ -81,6 +81,16 @@ html, body {
 
 .reticle { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 1px solid rgba(223, 232, 244, 0.35); border-radius: 50%; }
 .reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; background: rgba(223, 232, 244, 0.8); border-radius: 50%; }
+.aim { position: absolute; left: 0; top: 0; width: 18px; height: 18px; margin: -9px 0 0 -9px; opacity: 0.85; }
+.aim::before, .aim::after { content: ''; position: absolute; background: #ff7a64; box-shadow: 0 0 6px rgba(255, 90, 70, 0.7); }
+.aim::before { left: 8px; top: 0; width: 2px; height: 18px; }
+.aim::after { left: 0; top: 8px; width: 18px; height: 2px; }
+.gun-heat { position: absolute; left: 50%; top: calc(50% + 30px); width: 64px; height: 3px; margin-left: -32px; background: rgba(255, 255, 255, 0.08); opacity: 0; transition: opacity 0.3s; }
+.gun-heat.show { opacity: 1; }
+.gun-heat i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, var(--amber), var(--danger)); }
+.gun-heat.over i { background: var(--danger); animation: blink 0.4s steps(2) infinite; }
+.salvage { margin-top: 8px; font-size: 12px; letter-spacing: 0.16em; color: var(--dim); text-transform: uppercase; }
+.salvage b { color: var(--accent); font-size: 15px; letter-spacing: 0.05em; margin-left: 6px; }
 .steer-ring { position: absolute; left: 50%; top: 50%; border: 1px dashed rgba(160, 190, 220, 0.08); border-radius: 50%; }
 .cursor { position: absolute; left: 0; top: 0; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid var(--accent); border-radius: 50%; box-shadow: 0 0 8px rgba(95, 245, 224, 0.6); }
 .cursor::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--accent); border-radius: 50%; }

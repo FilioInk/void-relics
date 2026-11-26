@@ -3,7 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { createRng, type Rng } from '../core/rng.ts';
 import { JUNK_VARIANTS, type Graveyard, type Junk, type Station } from '../world/generate.ts';
 import { FRAG_HEAD, FRAG_TAIL, VERT_HEAD, VERT_TAIL } from './glsl.ts';
-import { painted, type Collider } from './wrecks.ts';
+import type { Target } from '../game/targets.ts';
+import { painted } from './wrecks.ts';
 
 /**
  * Orbital debris: broken stations (a truss spine with modules and solar wings, or a torn wheel),
@@ -20,7 +21,16 @@ const MATS: readonly Mat[] = ['hull', 'panel', 'foil', 'glow', 'beacon'];
 /** A bit of a station; `key` is where it sits along the spine (or its angle on a wheel). */
 type Part = { geo: THREE.BufferGeometry; mat: Mat; key: number };
 
-export type DebrisView = { group: THREE.Group; colliders: Collider[]; update(t: number, dt: number): void };
+export type DebrisView = {
+  group: THREE.Group;
+  /** Station pieces are unbreakable; satellites and junk carry their kind and index. */
+  colliders: Target[];
+  /** Stops drawing one satellite or piece of junk. */
+  hide(kind: 'satellite' | 'junk', ref: number): void;
+  update(t: number, dt: number): void;
+};
+
+const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
 
 // --- materials ----------------------------------------------------------------------------
 
@@ -326,7 +336,7 @@ function slice(parts: Part[], kind: Station['kind'], pieces: number, rng: Rng, s
 
 type Spinner = { obj: THREE.Object3D; axis: THREE.Vector3; rate: number };
 
-function buildStation(s: Station, mats: Record<Mat, THREE.Material>, colliders: Collider[], spinners: Spinner[]): THREE.Group {
+function buildStation(s: Station, mats: Record<Mat, THREE.Material>, colliders: Target[], spinners: Spinner[]): THREE.Group {
   const rng = createRng(s.seed);
   const site = new THREE.Group();
   site.position.set(...s.position);
@@ -428,7 +438,7 @@ function satelliteTemplate(rng: Rng): Template {
   return { geos, core: Math.max(w, h, d) * 0.6 };
 }
 
-type SatInstance = { template: number; index: number; position: THREE.Vector3; scale: number; base: THREE.Quaternion; axis: THREE.Vector3; rate: number };
+type SatInstance = { template: number; index: number; position: THREE.Vector3; scale: number; base: THREE.Quaternion; axis: THREE.Vector3; rate: number; dead: boolean };
 
 // --- junk ---------------------------------------------------------------------------------
 
@@ -525,7 +535,7 @@ function glints(points: THREE.Vector3[], seed: number): { points: THREE.Points; 
 
 export function createDebris(stations: Station[], graveyards: Graveyard[], junk: Junk[], envMap: THREE.Texture | null, seed: number): DebrisView {
   const group = new THREE.Group();
-  const colliders: Collider[] = [];
+  const colliders: Target[] = [];
   const mats = materials(envMap, seed ^ 0x5017);
   const spinners: Spinner[] = [];
 
@@ -544,8 +554,8 @@ export function createDebris(stations: Station[], graveyards: Graveyard[], junk:
       const scale = rng.range(1.8, 3.4);
       const position = new THREE.Vector3(g.center[0] + x * g.radius, g.center[1] + y * g.radius, g.center[2] + z * g.radius);
       const base = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)));
-      sats.push({ template, index: perTemplate[template]!++, position, scale, base, axis: new THREE.Vector3(...rng.onSphere()), rate: rng.range(0.02, 0.12) * rng.pick([-1, 1]) });
-      colliders.push({ position: [position.x, position.y, position.z], radius: templates[template]!.core * scale });
+      sats.push({ template, index: perTemplate[template]!++, position, scale, base, axis: new THREE.Vector3(...rng.onSphere()), rate: rng.range(0.02, 0.12) * rng.pick([-1, 1]), dead: false });
+      colliders.push({ position: [position.x, position.y, position.z], radius: templates[template]!.core * scale, kind: 'satellite', ref: sats.length - 1 });
     }
   }
   const satMeshes: THREE.InstancedMesh[][] = templates.map((tpl, k) => {
@@ -571,22 +581,27 @@ export function createDebris(stations: Station[], graveyards: Graveyard[], junk:
   for (const j of junk) counts[j.variant] = (counts[j.variant] ?? 0) + 1;
   const junkMeshes = shapes.map((s, v) => (counts[v]! > 0 ? new THREE.InstancedMesh(s.geo, mats[s.mat], counts[v]!) : null));
   const filled = shapes.map(() => 0);
+  const junkSlot: Array<{ mesh: THREE.InstancedMesh; i: number } | null> = [];
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
   const p = new THREE.Vector3();
   const sc = new THREE.Vector3();
   const c = new THREE.Color();
-  for (const j of junk) {
+  junk.forEach((j, ref) => {
     const mesh = junkMeshes[j.variant];
-    if (!mesh) continue;
+    if (!mesh) {
+      junkSlot.push(null);
+      return;
+    }
     q.setFromEuler(e.set(...j.rotation));
     m.compose(p.set(...j.position), q, sc.setScalar(j.size));
     const i = filled[j.variant]!++;
     mesh.setMatrixAt(i, m);
     mesh.setColorAt(i, c.setScalar(j.shade));
-    colliders.push({ position: j.position, radius: j.size * 0.5 });
-  }
+    junkSlot.push({ mesh, i });
+    colliders.push({ position: j.position, radius: j.size * 0.5, kind: 'junk', ref });
+  });
   for (const mesh of junkMeshes) {
     if (!mesh) continue;
     mesh.instanceMatrix.needsUpdate = true;
@@ -597,6 +612,11 @@ export function createDebris(stations: Station[], graveyards: Graveyard[], junk:
 
   const sparkle = glints([...junk.map((j) => new THREE.Vector3(...j.position)), ...sats.map((s) => s.position)], seed ^ 0x611);
   group.add(sparkle.points);
+  const glintPos = sparkle.points.geometry.getAttribute('position') as THREE.BufferAttribute;
+  const dropGlint = (i: number) => {
+    glintPos.setXYZ(i, 1e9, 1e9, 1e9);
+    glintPos.needsUpdate = true;
+  };
 
   const glow = mats.glow as THREE.MeshBasicMaterial;
   const beacon = mats.beacon as THREE.MeshBasicMaterial;
@@ -608,12 +628,26 @@ export function createDebris(stations: Station[], graveyards: Graveyard[], junk:
   return {
     group,
     colliders,
+    hide(kind, ref) {
+      if (kind === 'junk') {
+        const slot = junkSlot[ref];
+        if (!slot) return;
+        slot.mesh.setMatrixAt(slot.i, HIDDEN);
+        slot.mesh.instanceMatrix.needsUpdate = true;
+        dropGlint(ref);
+      } else {
+        const s = sats[ref];
+        if (!s) return;
+        s.dead = true;
+        dropGlint(junk.length + ref);
+      }
+    },
     update(t, dt) {
       sparkle.time.value = t;
       for (const s of spinners) s.obj.rotateOnAxis(s.axis, s.rate * dt);
       for (const s of sats) {
-        tmpQ.setFromAxisAngle(s.axis, s.rate * t).premultiply(s.base);
-        m.compose(s.position, tmpQ, scale.setScalar(s.scale));
+        if (s.dead) m.copy(HIDDEN);
+        else m.compose(s.position, tmpQ.setFromAxisAngle(s.axis, s.rate * t).premultiply(s.base), scale.setScalar(s.scale));
         for (const mesh of satMeshes[s.template]!) mesh.setMatrixAt(s.index, m);
       }
       for (const list of satMeshes) for (const mesh of list) mesh.instanceMatrix.needsUpdate = true;
