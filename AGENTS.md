@@ -26,12 +26,22 @@ frames), draw calls, triangles and shader programs from `renderer.info`.
 
 Use both: `?debug=1&perf=1`. Four fixed benchmark spots exist for every seed
 (`src/game/benchSpots.ts`): `__vr.spot('spawn' | 'nebula' | 'belt' | 'star')` flies there and
-stops. Let it settle ~3 s (shaders compile, exposure adapts), call `__vr.perfReset()`, wait, read
-`__vr.perf()`. On a 60 Hz display FPS is capped by vsync, so compare **GPU ms** (timer queries;
-`null` where the browser hides `EXT_disjoint_timer_query_webgl2`). `__vr.still(t)` pins the clock
-(no animation, exposure snapped) and `__vr.capture()` resolves to a PNG of the next frame: two
-captures of the same spot and `t` are pixel-identical, so a rendering change can be diffed exactly.
-`__vr.renderer` and `__vr.composer` are there for toggling passes from the console.
+stops.
+
+- **Compare with `__vr.benchSync(frames)`**, not the overlay's FPS. It renders frames back to
+  back and waits for each with a one-pixel read, so it returns the real cost of a frame (CPU and
+  GPU together) at full GPU clock. The overlay's FPS sits at the display's refresh rate whenever
+  the GPU keeps up, its GPU ms reads high while the GPU idles between vsyncs at low clocks, and a
+  hidden or background tab (the desktop app's browser pane when it is not shown) gets 1 frame a
+  second. GPU ms is `null` inside `benchSync` (WebGL withholds timer results until the task ends)
+  and where the browser hides `EXT_disjoint_timer_query_webgl2`.
+- **Other sessions and apps share the GPU.** Take the minimum over several short rounds, and
+  compare two builds by alternating between them (two dev servers, one tab) rather than
+  measuring one now and one later.
+- `__vr.still(t)` pins the clock (no animation, exposure snapped) and `__vr.capture()` resolves
+  to a PNG data URL of the next frame: two captures of the same spot and `t` are pixel-identical,
+  so a rendering change can be diffed exactly. `__vr.renderer` and `__vr.composer` are there for
+  toggling passes from the console; `__vr.perf()` / `__vr.perfReset()` read the overlay's window.
 
 ## Verify
 
