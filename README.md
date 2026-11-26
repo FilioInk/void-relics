@@ -75,7 +75,10 @@ Source to **GitHub Actions**.
 - `src/render/` — shaders for the planets, the star and the sky; nebula smoke from a baked
   noise texture; asteroids from displaced icospheres; procedural wrecks and the player ship.
 - `src/audio/engine.ts` — generative ambient on Web Audio: slow chords in drifting modes, FM
-  bells with echo, a drone, cosmic wind, a tension layer near the star; plus engine, impact,
-  scanner ping, pickup and explosion sounds.
+  bells with echo, a drone, cosmic wind, a tension layer near the star; plus impact, scanner
+  ping, pickup and explosion sounds. Music plays at 90% by default (Music volume in the menu).
+- `src/audio/rocketVoice.ts` — the rocket engine: no tone, only noise — a brown-noise rumble,
+  a pink-noise roar, exhaust crackle, combustion flutter and soft saturation, plus a whump on
+  ignition and boost and a chuff on cut-off.
 
 Development notes are in [AGENTS.md](AGENTS.md).

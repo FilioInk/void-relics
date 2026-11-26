@@ -215,6 +215,7 @@ export class Game {
       try {
         this.audio = new AudioEngine(this.seed);
         this.audio.setMusic(this.settings.music);
+        this.audio.setMusicVolume(this.settings.musicVolume);
         this.audio.setSound(this.settings.sound);
         this.audio.start();
       } catch {
@@ -258,6 +259,7 @@ export class Game {
     this.settings = next;
     writeStore(SETTINGS_KEY, JSON.stringify(next));
     this.audio?.setMusic(next.music);
+    this.audio?.setMusicVolume(next.musicVolume);
     this.audio?.setSound(next.sound);
     this.screens.refresh();
   }
