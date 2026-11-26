@@ -2,6 +2,8 @@
 export class SpatialHash<T extends { position: [number, number, number]; radius: number }> {
   private readonly cells = new Map<string, T[]>();
   private readonly cellSize: number;
+  /** Reused by query(), which runs several times a frame. */
+  private readonly seen = new Set<T>();
 
   constructor(cellSize: number, items: readonly T[] = []) {
     this.cellSize = cellSize;
@@ -30,7 +32,8 @@ export class SpatialHash<T extends { position: [number, number, number]; radius:
   query(x: number, y: number, z: number, radius: number, out: T[] = []): T[] {
     out.length = 0;
     const s = this.cellSize;
-    const seen = new Set<T>();
+    const seen = this.seen;
+    seen.clear();
     for (let ix = Math.floor((x - radius) / s); ix <= Math.floor((x + radius) / s); ix++)
       for (let iy = Math.floor((y - radius) / s); iy <= Math.floor((y + radius) / s); iy++)
         for (let iz = Math.floor((z - radius) / s); iz <= Math.floor((z + radius) / s); iz++) {
@@ -43,6 +46,7 @@ export class SpatialHash<T extends { position: [number, number, number]; radius:
             if (Math.hypot(px - x, py - y, pz - z) <= radius + item.radius) out.push(item);
           }
         }
+    seen.clear();
     return out;
   }
 }

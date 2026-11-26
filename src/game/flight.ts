@@ -77,6 +77,9 @@ export function forwardOf(q: Quaternion, out = new Vector3()): Vector3 {
 
 const tmpQ = new Quaternion();
 const tmpV = new Vector3();
+const tmpRight = new Vector3();
+/** Sanitised copy of the caller's input, reused: stepFlight runs up to 12 times a frame. */
+const clean: FlightInput = { aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 };
 const tmpDesired = new Vector3();
 const tmpAxis = new Vector3();
 
@@ -86,7 +89,14 @@ const axis = (v: number): number => (Number.isFinite(v) ? v : 0);
 export function stepFlight(s: FlightState, rawInput: FlightInput, dt: number): void {
   if (!(dt > 0)) return;
   const f = FLIGHT;
-  const input: FlightInput = { ...rawInput, aimX: axis(rawInput.aimX), aimY: axis(rawInput.aimY), strafe: axis(rawInput.strafe), roll: axis(rawInput.roll) };
+  const input = clean;
+  input.aimX = axis(rawInput.aimX);
+  input.aimY = axis(rawInput.aimY);
+  input.thrust = rawInput.thrust;
+  input.brake = rawInput.brake;
+  input.boost = rawInput.boost;
+  input.strafe = axis(rawInput.strafe);
+  input.roll = axis(rawInput.roll);
 
   // Boost spools up slowly and dies quickly.
   s.boost += ((input.boost ? 1 : 0) - s.boost) * approach(input.boost ? f.boostSpoolUp : f.boostSpoolDown, dt);
@@ -118,7 +128,7 @@ export function stepFlight(s: FlightState, rawInput: FlightInput, dt: number): v
       : s.throttle * f.reverseSpeed * (1 - s.boost) + s.boost * f.boostSpeed;
   tmpDesired.copy(forward).multiplyScalar(forwardSpeed);
   if (input.strafe !== 0) {
-    tmpDesired.addScaledVector(RIGHT.clone().applyQuaternion(s.orientation), input.strafe * f.strafeSpeed);
+    tmpDesired.addScaledVector(tmpRight.copy(RIGHT).applyQuaternion(s.orientation), input.strafe * f.strafeSpeed);
   }
 
   const engaged = input.thrust || input.brake || input.boost || input.strafe !== 0 || s.boost > 0.05;

@@ -88,6 +88,12 @@ export class Game {
   private regionTimer = 0;
   private regionId = '';
   private readonly inScan = new Set<string>();
+  // Per-frame scratch, reused so a frame allocates nothing the garbage collector must chase.
+  private readonly input: FlightInput = { aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 };
+  private readonly near: Collider[] = [];
+  private readonly markers: Marker[] = [];
+  private readonly markerPool: Marker[] = [];
+  private readonly nebulaCss = new Map<string, string>();
   private time = 0;
   private menuAngle = 0;
   private victoryShown = false;
@@ -373,15 +379,15 @@ export class Game {
     const k = this.keys;
     const radius = steerRadius(window.innerWidth, window.innerHeight);
     const aim = aimOf(this.cursor, radius, this.settings.invertY);
-    return {
-      aimX: aim.x,
-      aimY: aim.y,
-      thrust: k.has('KeyW') || k.has('ArrowUp'),
-      brake: k.has('KeyS') || k.has('ArrowDown'),
-      boost: k.has('Space'),
-      strafe: (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0),
-      roll: (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0),
-    };
+    const input = this.input;
+    input.aimX = aim.x;
+    input.aimY = aim.y;
+    input.thrust = k.has('KeyW') || k.has('ArrowUp');
+    input.brake = k.has('KeyS') || k.has('ArrowDown');
+    input.boost = k.has('Space');
+    input.strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    input.roll = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
+    return input;
   }
 
   // --- frame -----------------------------------------------------------------------------
@@ -445,8 +451,7 @@ export class Game {
   private simulate(dt: number): void {
     const f = this.flight;
     const world = this.world;
-    const input: FlightInput =
-      this.state === 'playing' ? this.readInput() : { aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 };
+    const input = this.state === 'playing' ? this.readInput() : IDLE_INPUT;
 
     if (this.state === 'dead') {
       this.deadTimer -= dt;
@@ -462,7 +467,7 @@ export class Game {
     const speed = f.velocity.length();
     const steps = Math.min(12, Math.max(1, Math.ceil((Math.max(speed, 300) * dt) / 10)));
     const h = dt / steps;
-    const near: Collider[] = [];
+    const near = this.near;
     let hardestHit = 0;
     for (let i = 0; i < steps; i++) {
       stepFlight(f, input, h);
@@ -523,7 +528,7 @@ export class Game {
     else if (heat.level > 0) warning = 'heatRising';
     else if (this.hull.hp < 25 && !this.hull.destroyed) warning = 'hullCritical';
     this.hud.setWarning(this.state === 'dead' ? 'none' : warning);
-    const nebColor = neb.nebula ? '#' + new THREE.Color(neb.nebula.colors[0]).getHexString() : '#000';
+    const nebColor = neb.nebula ? this.cssColorOf(neb.nebula.id, neb.nebula.colors[0]) : '#000';
     this.hud.setTint(nebColor, neb.density, heat.level * 0.6 + (heat.dps > 0 ? 0.3 : 0));
     this.audio?.setMood(heat.level, neb.density);
     this.audio?.updateShip(f.throttle, f.boost, heat.dps > 0 && this.state === 'playing');
@@ -567,6 +572,15 @@ export class Game {
     this.updateMarkers(range);
   }
 
+  private cssColorOf(id: string, color: number): string {
+    let css = this.nebulaCss.get(id);
+    if (css === undefined) {
+      css = '#' + new THREE.Color(color).getHexString();
+      this.nebulaCss.set(id, css);
+    }
+    return css;
+  }
+
   private pickUp(id: string): void {
     if (!collect(this.progress, id)) return;
     const a = this.world.artifacts.find((x) => x.id === id)!;
@@ -591,7 +605,8 @@ export class Game {
   }
 
   private updateMarkers(range: number): void {
-    const markers: Marker[] = [];
+    const markers = this.markers;
+    markers.length = 0;
     if (this.state !== 'playing') {
       this.hud.setMarkers(markers);
       return;
@@ -606,7 +621,7 @@ export class Game {
       if (distance > range * 1.15) continue;
       const toA = tmpV3.copy(pos).sub(this.camera.position);
       const inFront = toA.dot(camFwd) > 0;
-      const ndc = pos.clone().project(this.camera);
+      const ndc = tmpV4.copy(pos).project(this.camera);
       let x = (ndc.x * 0.5 + 0.5) * w;
       let y = (-ndc.y * 0.5 + 0.5) * hgt;
       const onScreen = inFront && Math.abs(ndc.x) < 0.94 && Math.abs(ndc.y) < 0.9;
@@ -622,7 +637,13 @@ export class Game {
         x = Math.min(w - 110, Math.max(110, w / 2 + Math.cos(angle) * w * 0.42));
         y = Math.min(hgt - 140, Math.max(120, hgt / 2 + Math.sin(angle) * hgt * 0.4));
       }
-      markers.push({ x, y, distance, edge: !onScreen, angle });
+      const m = (this.markerPool[markers.length] ??= { x: 0, y: 0, distance: 0, edge: false, angle: 0 });
+      m.x = x;
+      m.y = y;
+      m.distance = distance;
+      m.edge = !onScreen;
+      m.angle = angle;
+      markers.push(m);
     }
     this.hud.setMarkers(markers);
   }
@@ -810,6 +831,8 @@ export class Game {
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpV3 = new THREE.Vector3();
+const tmpV4 = new THREE.Vector3();
+const IDLE_INPUT: Readonly<FlightInput> = Object.freeze({ aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 });
 const WHITE = new THREE.Color(1, 1, 1);
 const NEBULA_DUST = new THREE.Color(1.0, 0.85, 1.0);
 
