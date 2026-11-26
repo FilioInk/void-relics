@@ -113,7 +113,10 @@ export class Game {
     this.settings = settings;
     this.debug = debug;
     this.perf = perf ? new PerfStats() : null;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+    // No antialias: the scene is drawn into the composer's own (single-sample) target and the
+    // canvas only ever receives one full-screen quad, so a multisampled canvas bought nothing
+    // but a resolve of every pixel every frame.
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
