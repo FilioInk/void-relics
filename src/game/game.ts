@@ -757,6 +757,27 @@ export class Game {
         self.perf?.reset();
         self.lastFrameAt = NaN;
       },
+      /**
+       * Render `frames` frames back to back, each waited for with a 1-pixel read: the true cost
+       * of a frame with the GPU at full clock, independent of vsync and of a throttled tab.
+       */
+      benchSync(frames = 120, warmup = 20) {
+        const gl = self.renderer.getContext();
+        const px = new Uint8Array(4);
+        const run = (n: number) => {
+          for (let i = 0; i < n; i++) {
+            self.frame();
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+          }
+        };
+        run(warmup);
+        self.perf?.reset();
+        self.lastFrameAt = NaN;
+        const t0 = performance.now();
+        run(frames);
+        const ms = (performance.now() - t0) / frames;
+        return { ms, report: self.perf?.report() ?? null };
+      },
       /** Pin the clock at t seconds (null to let it run): the same picture on every run. */
       still(t: number | null) {
         self.stillTime = t === null || !Number.isFinite(t) ? null : t;
