@@ -57,10 +57,16 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 
 ## Things that will bite you
 
-- **Every custom shader needs the log-depth chunks.** The renderer uses
-  `logarithmicDepthBuffer` (the scene spans 0.5 m to 400 km). A `ShaderMaterial` without
-  `VERT_HEAD/VERT_TAIL/FRAG_HEAD/FRAG_TAIL` from `src/render/glsl.ts` depth-sorts wrongly
-  against everything else.
+- **Every custom shader needs the log-depth chunks.** The scene spans 0.5 m to 400 km. Where
+  the browser has `EXT_clip_control` the renderer uses reversed Z into a 32-bit float depth
+  target (the chunks then compile to nothing); elsewhere it falls back to
+  `logarithmicDepthBuffer`, and a `ShaderMaterial` without `VERT_HEAD/VERT_TAIL/FRAG_HEAD/
+  FRAG_TAIL` from `src/render/glsl.ts` depth-sorts wrongly against everything else there.
+- **Bloom is split across two passes.** `BloomPass` (`src/render/post.ts`) only builds the
+  glow; `BloomOutputPass` adds it during tone mapping. Something inserted between them sees the
+  scene without bloom; a pass after the output would need the glow added differently.
+- **The fog never leaves the scene.** Outside a nebula its density is 0. Setting `scene.fog`
+  to `null` (or a new fog object) recompiles every fog-aware material: a visible hitch.
 - **Tests run TypeScript straight on Node** (type stripping). Imports carry the `.ts`
   extension, type-only imports must be `import type`, and `erasableSyntaxOnly` forbids enums
   and constructor parameter properties.

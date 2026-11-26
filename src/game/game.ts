@@ -115,13 +115,25 @@ export class Game {
     // No antialias: the scene is drawn into the composer's own (single-sample) target and the
     // canvas only ever receives one full-screen quad, so a multisampled canvas bought nothing
     // but a resolve of every pixel every frame.
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+    // Depth for a scene from 0.5 m to 400 km: reversed Z into a float depth buffer where the
+    // browser has EXT_clip_control (no fragment-shader depth writes, so early-Z works), and
+    // the logarithmic depth buffer elsewhere.
+    const reversed = supportsReversedDepth();
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: false,
+      reversedDepthBuffer: reversed,
+      logarithmicDepthBuffer: !reversed,
+      powerPreference: 'high-performance',
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    this.composer = new EffectComposer(this.renderer);
+    // Reversed Z only pays off with a float depth buffer, so the scene target gets one.
+    const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType) });
+    this.composer = new EffectComposer(this.renderer, sceneTarget);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new BloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
     this.composer.addPass(this.bloom);
@@ -800,6 +812,18 @@ const tmpV2 = new THREE.Vector3();
 const tmpV3 = new THREE.Vector3();
 const WHITE = new THREE.Color(1, 1, 1);
 const NEBULA_DUST = new THREE.Color(1.0, 0.85, 1.0);
+
+/** Probed on a throwaway canvas: the game canvas must get its context from three, once. */
+function supportsReversedDepth(): boolean {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    const ok = !!gl?.getExtension('EXT_clip_control');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
