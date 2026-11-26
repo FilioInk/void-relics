@@ -61,6 +61,16 @@ you break stays broken.
 `?seed=12345` in the URL gives a different galaxy; the **New galaxy** button does the same with a
 random number.
 
+## Infinite flight
+
+**Infinite flight** in the menu is a screensaver of a mode: the ship flies itself down an endless
+path while asteroid fields, nebulae, planets (some ringed, some with a moon), stars, station
+ruins and satellite graveyards are generated ahead of it and dropped behind. The autopilot
+slows through fields and ruins, opens up across empty space, and in fields picks off a rock now
+and then. The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
+cockpit. **C** changes the camera, **H** hides the hints and captions, **Esc** goes back to the
+menu. The journey is fixed by the galaxy seed.
+
 ## Run it
 
 ```bash

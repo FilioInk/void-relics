@@ -106,6 +106,15 @@ html, body {
 
 .hud-hint { position: absolute; right: 22px; bottom: 26px; color: var(--dim); font-size: 12px; letter-spacing: 0.1em; text-align: right; line-height: 1.7; }
 
+/* --- infinite flight --- */
+.inf { position: absolute; inset: 0; pointer-events: none; }
+.inf-caption { position: absolute; top: 14%; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); text-align: center; font-size: clamp(16px, 3.2vw, 26px); font-weight: 300; letter-spacing: 0.4em; text-transform: uppercase; color: var(--ink); text-shadow: 0 0 18px rgba(0, 0, 0, 0.8); opacity: 0; }
+.inf-caption.show { animation: inf-caption 7s ease forwards; }
+@keyframes inf-caption { 0% { opacity: 0; letter-spacing: 0.55em; } 15% { opacity: 0.9; } 70% { opacity: 0.9; } 100% { opacity: 0; letter-spacing: 0.4em; } }
+.inf-hint { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); text-align: center; font-size: 12px; letter-spacing: 0.14em; color: var(--dim); transition: opacity 1.5s; }
+.inf-hint.fade { opacity: 0; }
+.inf.quiet .inf-caption, .inf.quiet .inf-hint { display: none; }
+
 /* --- overlays (menu, pause, death, victory) --- */
 .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 30% 40%, rgba(4, 6, 12, 0.35), rgba(4, 6, 12, 0.88)); }
 .overlay.clear { background: rgba(4, 6, 12, 0.35); }

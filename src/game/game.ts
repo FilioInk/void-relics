@@ -4,6 +4,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { AudioEngine } from '../audio/engine.ts';
+import { InfiniteFlight } from '../infinite/flight.ts';
 import { t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
 import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
@@ -31,7 +32,7 @@ import { SpatialHash } from './spatialHash.ts';
 import { SEALED_CONTEXTS, SHELL_RADIUS, lootOf, segmentSphere, stepBolts, targetHp, targetId, type Bolt, type BoltHit, type Target } from './targets.ts';
 import { GUN_MOUNTS, WEAPON, createWeapon, stepWeapon } from './weapons.ts';
 
-type State = 'loading' | 'menu' | 'playing' | 'paused' | 'map' | 'dead' | 'victory';
+type State = 'loading' | 'menu' | 'playing' | 'paused' | 'map' | 'dead' | 'victory' | 'infinite';
 
 const REGION_KEYS: Record<Region['kind'], Key> = {
   star: 'regionStar',
@@ -52,6 +53,8 @@ export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
+  private readonly renderPass: RenderPass;
+  private infinite: InfiniteFlight | null = null;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(70, 1, 0.5, 2_000_000);
   private readonly clock = new THREE.Timer();
@@ -125,7 +128,8 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(this.renderPass);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
@@ -134,6 +138,7 @@ export class Game {
       {
         onLaunch: () => this.launch(),
         onNewGalaxy: () => this.newGalaxy(),
+        onInfinite: () => this.startInfinite(),
         onResume: () => this.resume(),
         onKeepFlying: () => this.resume(),
         onSettings: (next) => this.applySettings(next),
@@ -160,6 +165,8 @@ export class Game {
 
     this.sky = createSky(this.renderer, this.seed);
     this.scene.background = this.sky.background;
+    // Shared with the infinite flight's scene: never disposed with a chunk.
+    this.sky.background.userData['shared'] = true;
     this.scene.add(this.sky.stars);
 
     this.sun = createSun(world.sun);
@@ -254,7 +261,8 @@ export class Game {
     this.cursor = { x: 0, y: 0 };
   }
 
-  private async launch(): Promise<void> {
+  /** Audio may only start from a click, so it is created on the first one that needs it. */
+  private ensureAudio(): void {
     if (!this.audio) {
       try {
         this.audio = new AudioEngine(this.seed);
@@ -266,12 +274,44 @@ export class Game {
       }
     }
     void this.audio?.resume();
+  }
+
+  private async launch(): Promise<void> {
+    this.ensureAudio();
     this.audio?.click();
     this.state = 'playing';
     this.screens.show('none');
     this.hud.show(true);
     this.regionId = '';
     this.requestLock();
+  }
+
+  /** Infinite flight: its own scene, drawn instead of the system until Esc. */
+  private startInfinite(): void {
+    this.ensureAudio();
+    this.audio?.click();
+    this.screens.show('none');
+    this.hud.show(false);
+    this.map.el.hidden = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.infinite = new InfiniteFlight({ renderer: this.renderer, camera: this.camera, envMap: this.sky.background, stars: this.sky.stars, seed: this.seed, sounds: () => this.audio });
+    this.ui.append(this.infinite.overlay);
+    this.infinite.start();
+    this.renderPass.scene = this.infinite.scene;
+    this.state = 'infinite';
+  }
+
+  private exitInfinite(): void {
+    if (!this.infinite) return;
+    this.infinite.dispose();
+    this.infinite = null;
+    this.renderPass.scene = this.scene;
+    this.audio?.updateShip(0, 0, false);
+    this.camera.up.set(0, 1, 0);
+    this.camera.fov = 70;
+    this.camera.updateProjectionMatrix();
+    this.state = 'menu';
+    this.screens.show('menu');
   }
 
   private resume(): void {
@@ -344,6 +384,13 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if (e.repeat && (e.code === 'KeyM' || e.code === 'Escape')) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
+      if (this.state === 'infinite') {
+        if (e.repeat) return;
+        if (e.code === 'Escape') this.exitInfinite();
+        else if (e.code === 'KeyC') this.infinite?.nextCamera();
+        else if (e.code === 'KeyH') this.infinite?.toggleHints();
+        return;
+      }
       this.keys.add(e.code);
       if (e.code === 'KeyM' || e.code === 'Tab') this.toggleMap();
       if (e.code === 'Escape' && !this.locked) {
@@ -401,6 +448,15 @@ export class Game {
     this.clock.update();
     const dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
+    if (this.state === 'infinite' && this.infinite) {
+      const info = this.infinite.update(dt);
+      this.sky.update(this.camera, this.renderer.getPixelRatio());
+      this.audio?.updateShip(info.throttle, info.boost, false);
+      this.audio?.setMood(0, info.nebula);
+      this.adaptExposureTo(info.star?.position ?? null, info.star?.radius ?? 0, dt);
+      this.composer.render(dt);
+      return;
+    }
     const simulate = this.state === 'playing' || this.state === 'dead' || this.state === 'victory';
 
     if (simulate) this.simulate(dt);
@@ -800,11 +856,19 @@ export class Game {
   /** Eye adaptation near the star: lower exposure and bloom the more of the view it fills. */
   private exposure = 1;
   private adaptExposure(dt: number): void {
-    const toSun = tmpV2.set(...this.world.sun.position).sub(this.camera.position);
-    const distance = toSun.length();
-    const fwd = tmpV3.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const offAxis = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun.normalize()), -1, 1));
-    const target = targetExposure({ starRadius: this.world.sun.radius, distance, offAxis, fov: this.camera.fov, aspect: this.camera.aspect });
+    this.adaptExposureTo(tmpV.set(...this.world.sun.position), this.world.sun.radius, dt);
+  }
+
+  /** The same for any star (or none, which relaxes toward normal exposure). */
+  private adaptExposureTo(star: THREE.Vector3 | null, radius: number, dt: number): void {
+    let target = 1;
+    if (star) {
+      const toSun = tmpV2.copy(star).sub(this.camera.position);
+      const distance = toSun.length();
+      const fwd = tmpV3.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+      const offAxis = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun.normalize()), -1, 1));
+      target = targetExposure({ starRadius: radius, distance, offAxis, fov: this.camera.fov, aspect: this.camera.aspect });
+    }
     this.exposure = stepExposure(this.exposure, target, dt);
     this.renderer.toneMappingExposure = this.exposure;
     this.bloom.strength = 0.8 * this.exposure * this.exposure;
@@ -860,6 +924,9 @@ export class Game {
       },
       get rocks() {
         return self.rocks;
+      },
+      get infinite() {
+        return self.infinite;
       },
       map(open: boolean) {
         if (open !== (self.state === 'map')) self.toggleMap();

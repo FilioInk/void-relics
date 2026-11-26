@@ -9,6 +9,7 @@ export type ScreenName = 'loading' | 'menu' | 'pause' | 'dead' | 'victory' | 'no
 export type ScreenHandlers = {
   onLaunch(): void;
   onNewGalaxy(): void;
+  onInfinite(): void;
   onResume(): void;
   onKeepFlying(): void;
   onSettings(next: Settings): void;
@@ -63,6 +64,7 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
               'div',
               { class: 'buttons' },
               h('button', { class: 'btn', text: st.found > 0 ? t('continue', { found: st.found }) : t('launch'), onclick: () => handlers.onLaunch() }),
+              h('button', { class: 'btn ghost', text: t('infinite'), onclick: () => handlers.onInfinite() }),
               h('button', { class: 'btn ghost', text: t('newGalaxy'), onclick: () => handlers.onNewGalaxy() }),
             ),
             h('div', { class: 'section-title', text: t('controlsTitle') }),
