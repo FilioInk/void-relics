@@ -69,8 +69,10 @@ path while asteroid fields, nebulae, planets (some ringed, some with a moon), st
 ruins and satellite graveyards are generated ahead of it and dropped behind. The autopilot
 slows through fields and ruins, opens up across empty space, and in fields picks off a rock now
 and then. The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
-cockpit. **C** changes the camera, **H** hides the hints and captions, **Esc** goes back to the
-menu. The journey is fixed by the galaxy seed.
+cockpit. Nothing else is on screen: a small button in the bottom-right corner (or **F**) goes
+full screen, and it and the cursor fade out while the mouse rests. **C** changes the camera,
+**H** shows the place names and the key hint, **Esc** goes back to the menu. The journey is
+fixed by the galaxy seed.
 
 ## Run it
 
