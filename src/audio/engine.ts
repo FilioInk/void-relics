@@ -1,5 +1,11 @@
 import { createRng, type Rng } from '../core/rng.ts';
+import { DEFAULT_MUSIC_VOLUME } from '../game/settings.ts';
+import { createIgnition, stepIgnition } from './rocket.ts';
+import { RocketVoice } from './rocketVoice.ts';
 import { chord, melodyPool, midiToFreq, progression, type ModeName } from './theory.ts';
+
+/** Music bus level at 100% music volume. */
+export const MUSIC_LEVEL = 0.55;
 
 /**
  * All sound is synthesised live with Web Audio: no audio files ship with the game.
@@ -23,6 +29,7 @@ export class AudioEngine {
   private readonly rng: Rng;
 
   private musicOn = true;
+  private musicVolume = DEFAULT_MUSIC_VOLUME;
   private soundOn = true;
   private scheduler: number | undefined;
   private nextChordAt = 0;
@@ -34,11 +41,8 @@ export class AudioEngine {
   private currentDegree = 0;
 
   // Continuous voices.
-  private engineOsc: OscillatorNode | null = null;
-  private engineFilter: BiquadFilterNode | null = null;
-  private engineGain: GainNode | null = null;
-  private boostFilter: BiquadFilterNode | null = null;
-  private boostGain: GainNode | null = null;
+  private rocket: RocketVoice | null = null;
+  private readonly ignition = createIgnition();
   private tensionGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
   private nextAlarmAt = 0;
@@ -81,7 +85,7 @@ export class AudioEngine {
     this.delaySend.connect(delay);
 
     this.musicBus = ctx.createGain();
-    this.musicBus.gain.value = 0.55;
+    this.musicBus.gain.value = MUSIC_LEVEL * this.musicVolume;
     this.musicBus.connect(this.master);
     this.musicBus.connect(this.reverbSend);
 
@@ -132,8 +136,20 @@ export class AudioEngine {
 
   setMusic(on: boolean): void {
     this.musicOn = on;
-    this.musicBus.gain.setTargetAtTime(on ? 0.55 : 0, this.ctx.currentTime, 0.4);
-    this.musicEcho.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.4);
+    this.applyMusicLevel();
+  }
+
+  /** 0..1 of the full music level. */
+  setMusicVolume(volume: number): void {
+    this.musicVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : DEFAULT_MUSIC_VOLUME;
+    this.applyMusicLevel();
+  }
+
+  private applyMusicLevel(): void {
+    const on = this.musicOn ? 1 : 0;
+    this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * this.musicVolume * on, this.ctx.currentTime, 0.4);
+    // The echo send scales with the bus so echoes stay in proportion to the dry music.
+    this.musicEcho.gain.setTargetAtTime(this.musicVolume * on, this.ctx.currentTime, 0.4);
   }
 
   setSound(on: boolean): void {
@@ -340,40 +356,19 @@ export class AudioEngine {
   // --- ship sounds -----------------------------------------------------------------------
 
   private startEngine(): void {
-    const ctx = this.ctx;
-    this.engineOsc = ctx.createOscillator();
-    this.engineOsc.type = 'sawtooth';
-    this.engineOsc.frequency.value = 42;
-    this.engineFilter = ctx.createBiquadFilter();
-    this.engineFilter.type = 'lowpass';
-    this.engineFilter.frequency.value = 180;
-    this.engineGain = ctx.createGain();
-    this.engineGain.gain.value = 0;
-    this.engineOsc.connect(this.engineFilter).connect(this.engineGain).connect(this.sfxBus);
-    this.engineOsc.start();
-
-    const hiss = ctx.createBufferSource();
-    hiss.buffer = this.noise;
-    hiss.loop = true;
-    this.boostFilter = ctx.createBiquadFilter();
-    this.boostFilter.type = 'bandpass';
-    this.boostFilter.Q.value = 1.2;
-    this.boostFilter.frequency.value = 500;
-    this.boostGain = ctx.createGain();
-    this.boostGain.gain.value = 0;
-    hiss.connect(this.boostFilter).connect(this.boostGain).connect(this.sfxBus);
-    hiss.start();
+    this.rocket = new RocketVoice(this.ctx, this.sfxBus, Math.random);
+    this.rocket.start();
   }
 
   /** throttle -1..1, boost 0..1, heat 0..1 (dps > 0 sounds the alarm). */
   updateShip(throttle: number, boost: number, heatDamage: boolean): void {
     const t = this.ctx.currentTime;
     const thrust = Math.abs(throttle);
-    this.engineOsc?.frequency.setTargetAtTime(40 + thrust * 22 + boost * 30, t, 0.2);
-    this.engineFilter?.frequency.setTargetAtTime(160 + thrust * 420 + boost * 900, t, 0.2);
-    this.engineGain?.gain.setTargetAtTime(0.025 + thrust * 0.05 + boost * 0.04, t, 0.25);
-    this.boostFilter?.frequency.setTargetAtTime(500 + boost * 2600, t, 0.3);
-    this.boostGain?.gain.setTargetAtTime(boost * 0.12, t, 0.25);
+    this.rocket?.set(thrust, boost, t);
+    const event = stepIgnition(this.ignition, thrust, boost, t);
+    if (event === 'ignite') this.rocket?.ignite(t, 1);
+    else if (event === 'afterburner') this.rocket?.ignite(t, 1.6);
+    else if (event === 'cutoff') this.rocket?.cutoff(t);
     if (heatDamage && t >= this.nextAlarmAt) {
       this.beep(t, 880, 0.12, 0.05);
       this.beep(t + 0.16, 660, 0.12, 0.05);
