@@ -28,10 +28,13 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
       h('button', { class: `toggle ${on ? 'on' : ''}`, text: on ? t('on') : t('off'), onclick: () => flip() });
     const sens = h('input', { type: 'range', min: 0.3, max: 2.5, step: 0.05, value: s.sensitivity });
     sens.addEventListener('change', () => change({ sensitivity: Number(sens.value) }));
+    const vol = h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: s.musicVolume });
+    vol.addEventListener('change', () => change({ musicVolume: Number(vol.value) }));
     return h(
       'div',
       { class: 'settings' },
       h('label', { text: t('music') }), toggle(s.music, () => change({ music: !s.music })),
+      h('label', { text: t('musicVolume') }), vol,
       h('label', { text: t('sound') }), toggle(s.sound, () => change({ sound: !s.sound })),
       h('label', { text: t('sensitivity') }), sens,
       h('label', { text: t('invertY') }), toggle(s.invertY, () => change({ invertY: !s.invertY })),

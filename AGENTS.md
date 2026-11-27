@@ -39,15 +39,17 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   `names.ts` (generated names).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
   heat, collisions, hull), `progress.ts` (relics found, salvage, broken targets, saves),
-  `weapons.ts` (rate of fire, heat, gun mounts), `targets.ts` (what bolts hit, how many hits
+  `weapons.ts` (rate of fire, heat; the muzzles come from `ship.ts`), `targets.ts` (what bolts hit, how many hits
   things take, deterministic loot, sealed relics), `settings.ts`, `aim.ts`, `spatialHash.ts`;
   `game.ts` wires it all to the scene, HUD and audio and runs the loop.
 - `src/render/` — three.js builders: sky, sun, planets, asteroids, nebula smoke, wrecks,
   orbital debris (`debris.ts`: stations, instanced satellites, junk, distance glints), relics,
-  the player ship, speed dust, laser effects (`combat.ts`: bolts, sparks, fragments, salvage,
-  relic shells — all pooled). Shared GLSL in `glsl.ts`.
+  the player ship (`ship.ts`, skinned by `plating.ts`), speed dust, laser effects (`combat.ts`:
+  bolts, sparks, fragments, salvage, relic shells — all pooled). Shared GLSL in `glsl.ts`.
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
-  the scales and chord progressions.
+  the scales and chord progressions; `rocket.ts` is the engine's pure maths (noise colours,
+  crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
+  which also runs in an `OfflineAudioContext` to render a listening demo.
 - `src/ui/` — HUD, system map, menus. `src/text.ts` — every user-facing string.
 - `.github/workflows/` — `ci.yml` runs verify on every PR; `deploy.yml` publishes to Pages.
 
