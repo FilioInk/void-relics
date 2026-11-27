@@ -2,6 +2,14 @@ import './style.css';
 import { Game } from './game/game.ts';
 import { SETTINGS_KEY, defaultSettings, parseSettings, readStore } from './game/settings.ts';
 import { t } from './text.ts';
+import { captureInstallPrompt, registerServiceWorker } from './ui/install.ts';
+import { createWakeLock } from './ui/wakeLock.ts';
+
+// The browser offers installing once, soon after load; keep that offer for the menu's "Install app".
+captureInstallPrompt();
+// Full screen (and the installed app) keeps the phone's screen on.
+createWakeLock();
+if (import.meta.env.PROD) registerServiceWorker(window);
 
 const DEFAULT_SEED = 1337;
 

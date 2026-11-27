@@ -1,6 +1,7 @@
 import { t, type Key } from '../text.ts';
 import type { Settings } from '../game/settings.ts';
 import { h } from './dom.ts';
+import type { InstallPath } from './install.ts';
 
 /** Menu, pause, death and victory overlays. They rebuild themselves when a setting changes. */
 
@@ -15,10 +16,18 @@ export type ScreenHandlers = {
   onMenu(): void;
   onKeepFlying(): void;
   onSettings(next: Settings): void;
+  /** "Install app": the browser's dialog where it has one, else which steps to show. */
+  onInstall(): Promise<'accepted' | 'dismissed' | InstallSteps>;
 };
 
-/** `touch`: a touch-first device, played with the on-screen controls. */
-export type ScreenState = { seed: number; found: number; settings: Settings; victoryTime: string; touch: boolean };
+/** The browsers whose install the menu explains in steps. */
+export type InstallSteps = Exclude<InstallPath, 'prompt'>;
+
+/**
+ * `touch`: a touch-first device, played with the on-screen controls. `installable`: a browser
+ * tab, where the menu offers to install the game as an app.
+ */
+export type ScreenState = { seed: number; found: number; settings: Settings; victoryTime: string; touch: boolean; installable: boolean };
 
 const KEYBOARD_CONTROLS = ['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlFire', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause', 'ctlInfinite'] as const;
 const TOUCH_CONTROLS = ['ctlTouchStick', 'ctlTouchThrust', 'ctlTouchBrake', 'ctlTouchBoost', 'ctlTouchFire', 'ctlTouchBar', 'ctlTouchInfinite'] as const;
@@ -39,6 +48,17 @@ export function pauseButtons(touch: boolean): readonly { label: Key; action: 're
 /** The main game's button: the hunt, with the score once it has started. */
 export function playLabel(found: number): string {
   return found > 0 ? t('collectRelicsProgress', { found }) : t('collectRelics');
+}
+
+const INSTALL_STEPS: Record<InstallSteps, readonly Key[]> = {
+  ios: ['installIos1', 'installIos2'],
+  'mac-safari': ['installMacSafari'],
+  manual: ['installManual1', 'installManual2'],
+};
+
+/** The install card's steps for a browser without an install dialog. */
+export function installSteps(path: InstallSteps): readonly Key[] {
+  return INSTALL_STEPS[path];
 }
 
 /**
@@ -70,15 +90,38 @@ function menuTitle(): HTMLElement {
 export function createScreens(handlers: ScreenHandlers, state: () => ScreenState) {
   const root = h('div');
   let current: ScreenName = 'loading';
-  /** The start menu is two views: the title with its buttons, and the settings behind them. */
-  let menuView: 'main' | 'settings' = 'main';
-  const openMenuView = (view: 'main' | 'settings') => {
+  /**
+   * The start menu is three views: the title with its buttons, and behind them the settings and
+   * the install steps (for a browser that has no install dialog of its own).
+   */
+  let menuView: 'main' | 'settings' | 'install' = 'main';
+  let steps: InstallSteps = 'manual';
+  const openMenuView = (view: 'main' | 'settings' | 'install') => {
     menuView = view;
     render();
   };
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Escape' && current === 'menu' && menuView === 'settings') openMenuView('main');
+    if (e.code === 'Escape' && current === 'menu' && menuView !== 'main') openMenuView('main');
   });
+  const install = async () => {
+    const result = await handlers.onInstall();
+    if (result === 'accepted' || result === 'dismissed') return;
+    steps = result;
+    if (current === 'menu') openMenuView('install');
+  };
+
+  /** A card behind the start menu, with a Back button and a click outside it to leave. */
+  const menuCard = (title: string, ...body: HTMLElement[]) =>
+    h(
+      'div',
+      { class: 'overlay', onclick: (e: Event) => { if (e.target === e.currentTarget) openMenuView('main'); } },
+      h(
+        'div',
+        { class: 'card' },
+        h('div', { class: 'card-head' }, h('h2', { text: title }), h('button', { class: 'btn ghost small', text: t('back'), onclick: () => openMenuView('main') })),
+        ...body,
+      ),
+    );
 
   const settingsPanel = (): HTMLElement => {
     const s = state().settings;
@@ -109,28 +152,23 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
         return h('div', { class: 'loading', text: t('loading') });
       case 'menu':
         if (menuView === 'settings')
-          return h(
-            'div',
-            { class: 'overlay', onclick: (e: Event) => { if (e.target === e.currentTarget) openMenuView('main'); } },
+          return menuCard(
+            t('settings'),
             h(
               'div',
-              { class: 'card' },
-              h(
-                'div',
-                { class: 'card-head' },
-                h('h2', { text: t('settings') }),
-                h('button', { class: 'btn ghost small', text: t('back'), onclick: () => openMenuView('main') }),
-              ),
-              h(
-                'div',
-                { class: 'galaxy-row' },
-                h('div', { class: 'seed', text: t('galaxy', { seed: st.seed }) }),
-                h('button', { class: 'btn ghost small', text: t('newGalaxy'), onclick: () => handlers.onNewGalaxy() }),
-              ),
-              h('div', { class: 'section-title', text: t('controlsTitle') }),
-              controls(),
-              settingsPanel(),
+              { class: 'galaxy-row' },
+              h('div', { class: 'seed', text: t('galaxy', { seed: st.seed }) }),
+              h('button', { class: 'btn ghost small', text: t('newGalaxy'), onclick: () => handlers.onNewGalaxy() }),
             ),
+            h('div', { class: 'section-title', text: t('controlsTitle') }),
+            controls(),
+            settingsPanel(),
+          );
+        if (menuView === 'install')
+          return menuCard(
+            t('installTitle'),
+            h('p', { text: t('installLead') }),
+            h('ol', { class: 'install-steps' }, ...installSteps(steps).map((k) => h('li', { text: t(k) }))),
           );
         return h(
           'div',
@@ -146,7 +184,12 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
               h('button', { class: 'btn', text: playLabel(st.found), onclick: () => handlers.onLaunch() }),
               h('button', { class: 'btn ghost', text: t('infinite'), onclick: () => handlers.onInfinite() }),
             ),
-            h('button', { class: 'menu-link', text: t('settings'), onclick: () => openMenuView('settings') }),
+            h(
+              'div',
+              { class: 'menu-links' },
+              h('button', { class: 'menu-link', text: t('settings'), onclick: () => openMenuView('settings') }),
+              st.installable ? h('button', { class: 'menu-link', text: t('install'), onclick: () => void install() }) : null,
+            ),
           ),
         );
       case 'pause':

@@ -86,10 +86,12 @@ export class InfiniteFlight {
   private readonly scratch: Target[] = [];
 
   // Overlay: the flight, the name of each new place as it fades in (H hides them), and the
-  // full-screen button, which fades out with the cursor while the pointer rests. On a touch
-  // device a camera button joins it and a back button sits top-left: a tap brings them all back.
+  // music and full-screen buttons, which fade out with the cursor while the pointer rests. On a
+  // touch device a camera button joins them and a back button sits top-left: a tap brings them
+  // all back.
   private readonly caption: HTMLElement;
   private readonly fullscreen: FullscreenButton;
+  private readonly musicButton: HTMLButtonElement;
   private namesOn = true;
   private idleTimer = 0;
   private readonly wake = (): void => {
@@ -108,7 +110,18 @@ export class InfiniteFlight {
   private readonly quat = new THREE.Quaternion();
   private readonly velocity = new THREE.Vector3();
 
-  constructor(opts: { renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; envMap: THREE.CubeTexture; stars: THREE.Points; seed: number; sounds: () => FlightSounds | null; onBack: () => void }) {
+  constructor(opts: {
+    renderer: THREE.WebGLRenderer;
+    camera: THREE.PerspectiveCamera;
+    envMap: THREE.CubeTexture;
+    stars: THREE.Points;
+    seed: number;
+    sounds: () => FlightSounds | null;
+    onBack: () => void;
+    /** Whether the music plays now, for the music button's icon. */
+    music: boolean;
+    onMusic: () => void;
+  }) {
     this.renderer = opts.renderer;
     this.camera = opts.camera;
     this.sounds = opts.sounds;
@@ -143,7 +156,20 @@ export class InfiniteFlight {
     };
     const camera = touchButton('inf-cam', t('infCamera'), ICON_CAMERA, () => this.nextCamera());
     const back = touchButton('inf-back', t('infBack'), ICON_BACK, () => opts.onBack());
-    this.overlay = h('div', { class: 'inf' }, this.caption, back, h('div', { class: 'inf-tools' }, camera, this.fullscreen.el));
+    this.musicButton = h('button', { class: 'inf-btn inf-music', type: 'button', onclick: () => opts.onMusic() });
+    this.setMusic(opts.music);
+    this.overlay = h('div', { class: 'inf' }, this.caption, back, h('div', { class: 'inf-tools' }, camera, this.musicButton, this.fullscreen.el));
+  }
+
+  /** The music button's icon: a note, struck through while the music is off. */
+  setMusic(on: boolean): void {
+    const b = this.musicButton;
+    const label = t(on ? 'infMusicOff' : 'infMusicOn');
+    b.innerHTML = icon(on ? ICON_MUSIC : ICON_MUSIC + ICON_STRIKE);
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('off', !on);
   }
 
   /** Builds the first stretches at once and compiles their shaders, so the flight starts smooth. */
@@ -530,5 +556,7 @@ const WHITE = new THREE.Color(1, 1, 1);
 const IDLE_MS = 2500;
 const ICON_CAMERA = '<path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z"/><circle cx="12" cy="13.5" r="3.2"/>';
 const ICON_BACK = '<path d="M14.5 5.5 8 12l6.5 6.5"/>';
+const ICON_MUSIC = '<path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/>';
+const ICON_STRIKE = '<path d="M3.5 3.5l17 17"/>';
 const ROCK_SPARK = new THREE.Color(2.4, 1.3, 0.6);
 const ROCK_DEBRIS = new THREE.Color(0.55, 0.5, 0.45);

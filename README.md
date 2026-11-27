@@ -3,7 +3,7 @@
 A browser space-flight game on three.js: free mouse-steered (or, on a phone, thumb-steered)
 flight through a procedurally generated star system, hunting for twenty alien relics. The
 world, its textures, the music and the sound are all generated at runtime from a single seed —
-the build contains no images and no audio files.
+the build contains no images (beyond the app icons, which a script draws) and no audio files.
 
 ![Nebula and relic](docs/screenshots/nebula-relic.jpg)
 
@@ -51,7 +51,7 @@ of the screen to steer: a stick appears under the thumb. On the right, around th
 **Thrust** (hold it, or tap it once to keep flying and tap again to stop), **Brake**, **Boost**
 and **Fire**; the system map and pause are in the top-right corner (pause also leads to the main
 menu). Steering, thrust and fire work at the same time. Portrait and landscape both work. In
-infinite flight, a tap brings up the camera, full-screen and back buttons.
+infinite flight, a tap brings up the camera, music, full-screen and back buttons.
 
 A relic shows from far away as a faint pulsing point of light, and the scanner picks up its
 signal within ~6.5 km (half that inside a nebula). On the map, every missing relic is drawn as a
@@ -76,11 +76,26 @@ path while asteroid fields, nebulae, planets (some ringed, some with a moon), st
 ruins and satellite graveyards are generated ahead of it and dropped behind. The autopilot
 slows through fields and ruins, opens up across empty space, and in fields picks off a rock now
 and then. The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
-cockpit. The only things on screen are the name of each new place as it fades in and a small
-button in the bottom-right corner (or **F**) that goes full screen; the button and the cursor
+cockpit. The only things on screen are the name of each new place as it fades in and two small
+buttons in the bottom-right corner: a note that switches the music off and on (or **M**; it is
+the same setting as Music in the menu) and full screen (or **F**). The buttons and the cursor
 fade out while the mouse rests. **C** changes the camera, **H** hides the place names, **Esc**
 goes back to the menu; on a touch screen, buttons do the camera and the way back. The journey
 is fixed by the galaxy seed.
+
+**Full screen keeps the screen on.** While the game is full screen, or opened as the installed
+app, it holds a screen wake lock, so a phone left to infinite flight does not dim and lock.
+Where the browser has no Wake Lock API (Firefox before 126, iOS before 16.4) the screen dims as
+usual.
+
+## Install it as an app
+
+**Install app** under the menu's buttons installs the game as an app (a PWA) on a phone or a
+computer: its own icon, its own window (full screen on a phone), and it plays without a
+connection. In Chrome, Edge and Samsung Internet the browser's own install dialog opens; on an
+iPhone or iPad a card shows the Share → Add to Home Screen steps, in Safari on a Mac File → Add
+to Dock, and in any other browser where its menu has the install item. The item is not shown
+inside the installed app, and leaves the menu once the browser reports the install.
 
 ## Run it
 
@@ -89,6 +104,7 @@ npm install
 npm run dev      # http://localhost:5173
 npm run verify   # typecheck + tests
 npm run build    # static site in dist/
+npm run preview  # serve dist/ — the only way to see the service worker and installing
 ```
 
 Needs Node 24 (`.nvmrc`) and a browser with WebGL 2.
