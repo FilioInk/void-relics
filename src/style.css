@@ -113,9 +113,7 @@ html, body {
 .inf-caption { position: absolute; top: 14%; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); text-align: center; font-size: clamp(16px, 3.2vw, 26px); font-weight: 300; letter-spacing: 0.4em; text-transform: uppercase; color: var(--ink); text-shadow: 0 0 18px rgba(0, 0, 0, 0.8); opacity: 0; }
 .inf-caption.show { animation: inf-caption 7s ease forwards; }
 @keyframes inf-caption { 0% { opacity: 0; letter-spacing: 0.55em; } 15% { opacity: 0.9; } 70% { opacity: 0.9; } 100% { opacity: 0; letter-spacing: 0.4em; } }
-.inf-hint { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); text-align: center; font-size: 12px; letter-spacing: 0.14em; color: var(--dim); transition: opacity 1.5s; }
-.inf-hint.fade { opacity: 0; }
-.inf.quiet .inf-caption, .inf.quiet .inf-hint { display: none; }
+.inf.quiet .inf-caption { display: none; }
 #ui .inf-fs { position: absolute; right: 16px; bottom: 16px; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; color: var(--ink); background: rgba(6, 10, 20, 0.45); border: 1px solid var(--faint); border-radius: 6px; cursor: pointer; opacity: 0.7; pointer-events: auto; transition: opacity 0.2s, border-color 0.2s, color 0.2s; }
 #ui .inf-fs:hover, #ui .inf-fs:focus-visible { opacity: 1; color: var(--accent); border-color: var(--accent); outline: none; }
 #ui .inf-fs[hidden] { display: none; }

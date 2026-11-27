@@ -55,7 +55,7 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - `src/infinite/` — infinite flight: `director.ts` (the endless path and what each 6 km segment
   holds, pure and tested), `stream.ts` (builds a segment with the regular `src/render/`
   builders, a few things per frame, and frees it behind the ship), `flight.ts` (autopilot,
-  cameras, origin shifts, autopilot guns, captions behind H, the full-screen button).
+  cameras, origin shifts, autopilot guns, place-name captions, the full-screen button).
   `src/ui/fullscreen.ts` wraps the Fullscreen API with the Safari fallback.
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
   wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
