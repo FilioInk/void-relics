@@ -12,6 +12,8 @@ before and after.
 | Before, boost | ![](before-boost.jpg) |
 | After, boost | ![](after-boost.jpg) |
 | After, chase camera, thrust | ![](after-chase-thrust.jpg) |
+| After, boost: the HUD's BOOST tag | ![](boost-hud.jpg) |
+| After, boost: touch controls (`__vr.touch(true)`) | ![](boost-touch.jpg) |
 
 What changed and what to look for:
 
@@ -22,5 +24,7 @@ What changed and what to look for:
   boosted flame is longer and whiter rather than a different hue.
 - **Nozzle throat.** The disc inside the bell glowed pale blue; now warm orange-white, so from
   the chase camera the engines read as two warm-white discs with an orange halo.
-- **Unchanged.** The bell rim (already dull red heating to white), flame length and shape, the
-  HUD's pink BOOST tag.
+- **BOOST.** The HUD tag and the touch BOOST button were pink; both now wear the flame's
+  orange (`--boost` in `style.css`). On the touch pad it sits between the amber BRAKE and the
+  red-orange FIRE and still reads apart from both.
+- **Unchanged.** The bell rim (already dull red heating to white), flame length and shape.
