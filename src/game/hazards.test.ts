@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Vector3 } from 'three';
-import { HULL_MAX, REPAIR_DELAY, collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull } from './hazards.ts';
+import { HULL_MAX, REPAIR_DELAY, collideBand, collideDisc, collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull } from './hazards.ts';
 
 const sun = { radius: 2600, heatRadius: 2600 * 1.9, warnRadius: 2600 * 2.6 };
 
@@ -70,4 +70,36 @@ test('impact damage: a scrape is free, a boosted ram hurts but is capped', () =>
   assert.equal(impactDamage(30), 0);
   assert.ok(impactDamage(280) > 10);
   assert.equal(impactDamage(1e6), 120);
+});
+
+test('a thin disc stops the ship on the side it came from, even a step past its middle', () => {
+  const n = [0, 0, 1] as const;
+  // Coming in along -z from the front, a sub-step that lands just behind the plane.
+  const p = new Vector3(0, 0, -1);
+  const v = new Vector3(0, 0, -100);
+  const hit = collideDisc(p, v, 7, [0, 0, 0], n, 50, 6);
+  assert.equal(hit, 100);
+  assert.ok(Math.abs(p.z - 10) < 1e-9, `pushed back to the front: ${p.z}`);
+  assert.ok(v.z > 0, 'bounced');
+  // Past the rim, or clear of the slab: no contact.
+  assert.equal(collideDisc(new Vector3(60, 0, 0), new Vector3(0, 0, -100), 7, [0, 0, 0], n, 50, 6), 0);
+  assert.equal(collideDisc(new Vector3(0, 0, 20), new Vector3(0, 0, -100), 7, [0, 0, 0], n, 50, 6), 0);
+});
+
+test('a band holds the ship off its floor and its walls', () => {
+  const band = { center: [0, 0, 0] as const, axis: [0, 1, 0] as const, radius: 80000, width: 6000, thickness: 90, wall: 600 };
+  // Diving at the floor from inside the ring: pushed back inward.
+  const p = new Vector3(79970, 0, 0);
+  const v = new Vector3(200, 0, 0);
+  assert.ok(collideBand(p, v, 7, band) > 0);
+  assert.ok(Math.abs(p.x - (80000 - 52)) < 1e-6, `${p.x}`);
+  assert.ok(v.x < 0);
+  // Flying into a rim wall from the land side: pushed back along the axis.
+  const q = new Vector3(79800, 2990, 0);
+  const w = new Vector3(0, 150, 0);
+  assert.ok(collideBand(q, w, 7, band) > 0);
+  assert.ok(q.y < 3000 - 50, `${q.y}`);
+  // Well above the land, or past the edge: nothing.
+  assert.equal(collideBand(new Vector3(70000, 0, 0), new Vector3(100, 0, 0), 7, band), 0);
+  assert.equal(collideBand(new Vector3(80000, 5000, 0), new Vector3(100, 0, 0), 7, band), 0);
 });

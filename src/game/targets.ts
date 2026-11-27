@@ -16,6 +16,9 @@ export type Target = {
   kind?: TargetKind;
   /** Index into the list the kind comes from (rocks, satellites, junk, relics). */
   ref?: number;
+  /** A thin disc rather than a sphere: its unit normal and its thickness (megastructure panels). */
+  normal?: [number, number, number];
+  thick?: number;
 };
 
 export type LootKind = 'crystal' | 'core';
@@ -125,4 +128,59 @@ export function stepBolts<T>(
   }
   bolts.length = keep;
   return hits;
+}
+
+/**
+ * Where the segment a→b crosses a thin disc (centre c, unit normal n, radius r), as a fraction
+ * 0..1 along it, or null. The bolt's own radius widens the disc.
+ */
+export function segmentDisc(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+  c: readonly [number, number, number],
+  n: readonly [number, number, number],
+  r: number,
+): number | null {
+  const da = (a[0] - c[0]) * n[0] + (a[1] - c[1]) * n[1] + (a[2] - c[2]) * n[2];
+  const db = (b[0] - c[0]) * n[0] + (b[1] - c[1]) * n[1] + (b[2] - c[2]) * n[2];
+  if (da === db || (da > 0 && db > 0) || (da < 0 && db < 0)) return null;
+  const t = da / (da - db);
+  const px = a[0] + (b[0] - a[0]) * t - c[0];
+  const py = a[1] + (b[1] - a[1]) * t - c[1];
+  const pz = a[2] + (b[2] - a[2]) * t - c[2];
+  return px * px + py * py + pz * pz <= r * r ? t : null;
+}
+
+/**
+ * Where the segment a→b first meets a band (the strip of a cylinder of radius r around `axis`
+ * through c, `width` wide along it), as a fraction 0..1, or null.
+ */
+export function segmentBand(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+  c: readonly [number, number, number],
+  axis: readonly [number, number, number],
+  r: number,
+  width: number,
+): number | null {
+  const rel = (p: readonly [number, number, number]) => {
+    const d: [number, number, number] = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+    const z = d[0] * axis[0] + d[1] * axis[1] + d[2] * axis[2];
+    return { z, q: [d[0] - z * axis[0], d[1] - z * axis[1], d[2] - z * axis[2]] as const };
+  };
+  const pa = rel(a);
+  const pb = rel(b);
+  const dq = [pb.q[0] - pa.q[0], pb.q[1] - pa.q[1], pb.q[2] - pa.q[2]];
+  const A = dq[0] * dq[0] + dq[1] * dq[1] + dq[2] * dq[2];
+  const B = 2 * (pa.q[0] * dq[0] + pa.q[1] * dq[1] + pa.q[2] * dq[2]);
+  const C = pa.q[0] * pa.q[0] + pa.q[1] * pa.q[1] + pa.q[2] * pa.q[2] - r * r;
+  if (A < 1e-12) return null;
+  const disc = B * B - 4 * A * C;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  for (const t of [(-B - sq) / (2 * A), (-B + sq) / (2 * A)]) {
+    if (t < 0 || t > 1) continue;
+    if (Math.abs(pa.z + (pb.z - pa.z) * t) <= width / 2) return t;
+  }
+  return null;
 }

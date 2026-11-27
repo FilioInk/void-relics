@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_BREAKABLE_ROCK, lootOf, segmentSphere, stepBolts, targetHp, targetId, type Bolt } from './targets.ts';
+import { MAX_BREAKABLE_ROCK, lootOf, segmentBand, segmentDisc, segmentSphere, stepBolts, targetHp, targetId, type Bolt } from './targets.ts';
 
 test('a segment finds where it enters a sphere, misses one beside it, and hits from inside at 0', () => {
   const t = segmentSphere(0, 0, 0, 100, 0, 0, 50, 0, 0, 10);
@@ -59,4 +59,18 @@ test('a bad time step moves nothing', () => {
   const bolts = [bolt(0, 1000)];
   assert.deepEqual(stepBolts(bolts, NaN, () => null), []);
   assert.equal(bolts[0]!.x, 0);
+});
+
+test('a bolt crosses a disc inside its rim and misses past it', () => {
+  const t = segmentDisc([0, 0, 10], [0, 0, -30], [0, 0, 0], [0, 0, 1], 5);
+  assert.ok(t !== null && Math.abs(t - 0.25) < 1e-9);
+  assert.equal(segmentDisc([8, 0, 10], [8, 0, -30], [0, 0, 0], [0, 0, 1], 5), null);
+  assert.equal(segmentDisc([0, 0, 10], [0, 0, 1], [0, 0, 0], [0, 0, 1], 5), null, 'stops short');
+});
+
+test('a bolt meets a band where it reaches its radius, within its width', () => {
+  const t = segmentBand([79000, 0, 0], [81000, 0, 0], [0, 0, 0], [0, 1, 0], 80000, 6000);
+  assert.ok(t !== null && Math.abs(t - 0.5) < 1e-9);
+  assert.equal(segmentBand([79000, 4000, 0], [81000, 4000, 0], [0, 0, 0], [0, 1, 0], 80000, 6000), null, 'past the edge');
+  assert.equal(segmentBand([70000, 0, 0], [71000, 0, 0], [0, 0, 0], [0, 1, 0], 80000, 6000), null, 'short of it');
 });

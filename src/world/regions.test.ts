@@ -55,3 +55,22 @@ test('stations, satellite graveyards and the junk ring have regions of their own
   const above: Vec3 = [ring.center[0] + n[0] * mid, ring.center[1] + n[1] * mid, ring.center[2] + n[2] * mid];
   assert.notEqual(regionAt(above, w).kind, 'junk');
 });
+
+test('a megastructure and a ringworld have regions of their own', () => {
+  const w = generateWorld(7, { megaChance: 1, gigaChance: 1 });
+  for (const m of w.megastructures) {
+    const r = regionAt(m.shape.center, w);
+    assert.equal(r.kind, m.shape.type, m.id);
+    assert.equal(r.name, m.name);
+  }
+  // Seed 7 with every site rolled wears Dyson rings or a ringworld; find a galaxy with a ringworld.
+  for (let seed = 1; seed < 40; seed++) {
+    const g = generateWorld(seed, { gigaChance: 1 }).giga;
+    if (g?.shape.type !== 'ringworld') continue;
+    const s = g.shape;
+    const above: Vec3 = [s.center[0] + s.up[0] * (s.radius - 2000), s.center[1] + s.up[1] * (s.radius - 2000), s.center[2] + s.up[2] * (s.radius - 2000)];
+    assert.equal(regionAt(above, generateWorld(seed, { gigaChance: 1 })).kind, 'ringworld');
+    return;
+  }
+  assert.fail('no ringworld in 40 galaxies');
+});

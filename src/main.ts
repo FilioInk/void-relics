@@ -4,6 +4,7 @@ import { SETTINGS_KEY, defaultSettings, parseSettings, readStore } from './game/
 import { t } from './text.ts';
 import { captureInstallPrompt, registerServiceWorker } from './ui/install.ts';
 import { createWakeLock } from './ui/wakeLock.ts';
+import { parsePercent } from './world/megastructures.ts';
 
 // The browser offers installing once, soon after load; keep that offer for the menu's "Install app".
 captureInstallPrompt();
@@ -36,7 +37,10 @@ if (!webglAvailable()) {
   ui.innerHTML = `<div class="loading">${t('noWebgl')}</div>`;
 } else {
   const params = new URLSearchParams(window.location.search);
-  const game = new Game(canvas, ui, seedFromUrl(), settings, params.has('debug'), params.has('perf'));
+  const game = new Game(canvas, ui, seedFromUrl(), settings, params.has('debug'), params.has('perf'), {
+    megaChance: parsePercent(params.get('mega')),
+    gigaChance: parsePercent(params.get('giga')),
+  });
   game.build().catch((err: unknown) => {
     console.error(err);
     ui.innerHTML = `<div class="loading">${t('noWebgl')}</div>`;
