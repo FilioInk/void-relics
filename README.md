@@ -44,14 +44,14 @@ the build contains no images and no audio files.
 | A / D | Strafe |
 | Q / E | Roll |
 | M (or Tab) | System map |
-| Esc | Pause |
+| Esc | Pause. The pause card also has **Main menu**: back to the start screen, the hunt kept as it is |
 
 **On a phone or tablet** the game shows touch controls instead. Drag anywhere on the left half
 of the screen to steer: a stick appears under the thumb. On the right, around the thumb, are
 **Thrust** (hold it, or tap it once to keep flying and tap again to stop), **Brake**, **Boost**
-and **Fire**; the system map and pause are in the top-right corner. Steering, thrust and fire
-work at the same time. Portrait and landscape both work. In infinite flight, a tap brings up
-the camera, full-screen and back buttons.
+and **Fire**; the system map and pause are in the top-right corner (pause also leads to the main
+menu). Steering, thrust and fire work at the same time. Portrait and landscape both work. In
+infinite flight, a tap brings up the camera, full-screen and back buttons.
 
 A relic shows from far away as a faint pulsing point of light, and the scanner picks up its
 signal within ~6.5 km (half that inside a nebula). On the map, every missing relic is drawn as a
