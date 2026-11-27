@@ -3,8 +3,10 @@
 export const STRINGS = {
   title: 'VOID RELICS',
   tagline: 'Twenty alien relics are hidden somewhere in an uncharted star system. Find them all.',
-  launch: 'Launch',
-  continue: 'Continue — {found}/20',
+  collectRelics: 'Collect relics',
+  collectRelicsProgress: 'Collect relics — {found}/20',
+  settings: 'Settings',
+  back: 'Back',
   newGalaxy: 'New galaxy',
   infinite: 'Infinite flight',
   fullscreen: 'Full screen',
