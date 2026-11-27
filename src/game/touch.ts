@@ -61,7 +61,7 @@ export function cursorOf(aim: Vec, steerRadius: number, out: Vec = { x: 0, y: 0 
   return out;
 }
 
-export type Control = 'stick' | 'thrust' | 'brake' | 'boost' | 'fire';
+export type Control = 'stick' | 'thrust' | 'boost' | 'fire';
 
 /**
  * Which finger holds which control. Every finger is tracked by its `pointerId`, so one thumb
@@ -112,35 +112,53 @@ export class TouchRouter {
 }
 
 /**
- * THRUST. Held, the ship flies while it is held, as with W. Tapped, it latches on, so one thumb
- * is free to fire while the other steers; the next press of THRUST, or BRAKE, lets it go.
+ * THRUST, which is also the brake. Held, the ship flies while it is held, as with W. Tapped, it
+ * latches on, so one thumb is free to fire while the other steers. The next press lets the
+ * latch go and brakes for as long as it is held, as with S: the ship stops, then backs away.
+ * From a standstill a tap and then a hold brakes the same way.
  */
 export class ThrustLatch {
   latched = false;
+  /** The press that let the latch go is still down. */
+  braking = false;
   private downAt = NaN;
-  private wasLatched = false;
 
   down(now: number): void {
-    this.downAt = now;
-    this.wasLatched = this.latched;
+    if (this.latched) {
+      this.latched = false;
+      this.braking = true;
+      this.downAt = NaN;
+      return;
+    }
+    // A second finger joining a brake keeps braking.
+    if (!this.braking) this.downAt = now;
   }
 
+  /** The last finger lifts off THRUST. */
   up(now: number): void {
+    if (this.braking) {
+      this.braking = false;
+      return;
+    }
     if (Number.isNaN(this.downAt)) return;
-    const tap = now - this.downAt < TAP_MS;
-    this.latched = this.wasLatched ? false : tap;
+    this.latched = now - this.downAt < TAP_MS;
     this.downAt = NaN;
   }
 
-  /** BRAKE, a pause or a death: the engine stops. */
+  /** A pause, the map or a death: the engine stops and the brake lets go. */
   cancel(): void {
     this.latched = false;
+    this.braking = false;
     this.downAt = NaN;
-    this.wasLatched = false;
   }
 
   /** Whether the engine burns, given whether a finger is on THRUST right now. */
   on(held: boolean): boolean {
-    return held || this.latched;
+    return this.latched || (held && !this.braking);
+  }
+
+  /** Whether the ship brakes (and, held on, reverses), given whether a finger is on THRUST. */
+  brake(held: boolean): boolean {
+    return held && this.braking;
   }
 }

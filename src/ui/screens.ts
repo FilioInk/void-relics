@@ -30,7 +30,7 @@ export type InstallSteps = Exclude<InstallPath, 'prompt'>;
 export type ScreenState = { seed: number; found: number; settings: Settings; victoryTime: string; touch: boolean; installable: boolean };
 
 const KEYBOARD_CONTROLS = ['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlFire', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause', 'ctlInfinite'] as const;
-const TOUCH_CONTROLS = ['ctlTouchStick', 'ctlTouchThrust', 'ctlTouchBrake', 'ctlTouchBoost', 'ctlTouchFire', 'ctlTouchBar', 'ctlTouchInfinite'] as const;
+const TOUCH_CONTROLS = ['ctlTouchStick', 'ctlTouchThrust', 'ctlTouchBoost', 'ctlTouchFire', 'ctlTouchBar', 'ctlTouchInfinite'] as const;
 
 /** The controls list in the settings and pause cards: the keys, or on a touch device the on-screen controls. */
 export function controlKeys(touch: boolean): readonly Key[] {
