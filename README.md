@@ -14,9 +14,13 @@ the build contains no images (beyond the app icons, which a script draws) and no
 
 ## What is out there
 
-- **A star** with a boiling surface and a corona. You can fly close, but inside ~1.9 radii the
-  hull starts to heat up, and at the surface it burns through in seconds. The heat zone is
-  marked on the map.
+- **A star** with a boiling surface and a corona, of a real class that differs from galaxy to
+  galaxy: a red, orange or yellow dwarf, a yellow-white F or white A star, or a white dwarf a
+  few hundred metres across, each with its temperature, size and luminosity from the reference
+  tables (see Infinite flight below). Its class sets its colour, size, brightness and the light
+  it casts; the map and the HUD name it. You can fly close, but inside ~1.9 radii the hull
+  starts to heat up, and at the surface it burns through in seconds. The heat zone is marked on
+  the map.
 - **Six planets**: lava, desert or rocky, an Earth-like world with clouds and city lights, gas
   giants (often ringed), ice worlds.
 - **An asteroid belt** and four **asteroid fields** — thousands of solid rocks of different

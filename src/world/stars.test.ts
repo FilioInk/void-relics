@@ -7,14 +7,18 @@ import {
   FAMILY_WEIGHTS,
   MAIN_SEQUENCE,
   SUN_RADIUS_M,
+  SYSTEM_FAMILIES,
+  SYSTEM_STAR_MAX_M,
   T_SUN,
   blackbody,
+  cssColor,
   formatQuantity,
   gameRadius,
   luminosityOf,
   mainSequenceAt,
   pickFamily,
   sampleStar,
+  sampleSystemStar,
   starLook,
   type StarFamily,
 } from './stars.ts';
@@ -160,4 +164,23 @@ test('caption numbers are short and grouped', () => {
   assert.equal(formatQuantity(1234), '1,230');
   assert.equal(formatQuantity(44900), '44,900');
   assert.equal(formatQuantity(Number.NaN), '—');
+});
+
+test("the relic hunt's star is a dwarf small enough for its planets", () => {
+  const rng = createRng(8);
+  const seen = new Set<StarFamily>();
+  for (let k = 0; k < 600; k++) {
+    const s = sampleSystemStar(rng);
+    seen.add(s.family);
+    assert.ok(SYSTEM_FAMILIES.includes(s.family), s.family);
+    assert.ok(gameRadius(s) <= SYSTEM_STAR_MAX_M, `${s.spectral}: ${gameRadius(s).toFixed(0)} m`);
+  }
+  assert.equal(seen.size, SYSTEM_FAMILIES.length);
+});
+
+test('map colours are sRGB hex', () => {
+  assert.equal(cssColor([1, 1, 1]), '#ffffff');
+  assert.equal(cssColor([0, 0, 0]), '#000000');
+  assert.equal(cssColor([0.2159, 0.2159, 0.2159]), '#808080');
+  assert.equal(cssColor([2, -1, 0.5]), '#ff00bc');
 });

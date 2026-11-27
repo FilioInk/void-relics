@@ -4,7 +4,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { AudioEngine } from '../audio/engine.ts';
 import { InfiniteFlight } from '../infinite/flight.ts';
 import { createInstallOffer } from '../ui/install.ts';
-import { t, type Key } from '../text.ts';
+import { starFacts, t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
 import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
 import { createCombatFx, type CombatFx, type LootItem } from '../render/combat.ts';
@@ -737,7 +737,8 @@ export class Game {
       const r = regionAt([f.position.x, f.position.y, f.position.z], world);
       if (r.id !== this.regionId) {
         this.regionId = r.id;
-        this.hud.setRegion(t(REGION_KEYS[r.kind], { name: r.name ?? '' }), '');
+        // Near the star, the line under its name says what kind of star it is.
+        this.hud.setRegion(t(REGION_KEYS[r.kind], { name: r.name ?? '' }), r.kind === 'star' ? starFacts(world.sun.star) : '');
       }
     }
 
