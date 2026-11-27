@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORRIDOR, Director, Path, SEGMENT, cruiseSpeed, distance, fieldRocks, wantedSegments, type Thing } from './director.ts';
+import { megaSpheres } from '../world/megastructures.ts';
+import { CORRIDOR, Director, MEGA_CHANCE, MEGA_FROM, Path, SEGMENT, cruiseSpeed, distance, fieldRocks, wantedSegments, type Thing } from './director.ts';
 
 const N = 60;
 
@@ -51,8 +52,14 @@ test('pacing: calm start, stars rare, no repeats where repeats would bore', () =
   }
 });
 
-/** How far out a thing reaches, for the corridor check. */
-function reach(t: Thing): { at: [number, number, number]; r: number } | null {
+/** How far out a thing reaches, for the corridor check (a megastructure as the spheres that hold it). */
+function reach(t: Thing): Array<{ at: [number, number, number]; r: number }> {
+  if (t.type === 'gate' || t.type === 'habitat' || t.type === 'lattice') return megaSpheres(t);
+  const one = reachOne(t);
+  return one ? [one] : [];
+}
+
+function reachOne(t: Thing): { at: [number, number, number]; r: number } | null {
   switch (t.type) {
     case 'planet':
       return { at: t.planet.position, r: t.planet.radius * (t.planet.ring ? 2.4 : 1.05) };
@@ -71,15 +78,15 @@ function reach(t: Thing): { at: [number, number, number]; r: number } | null {
 
 for (const seed of [5, 42]) {
   test(`seed ${seed}: nothing solid sits in the corridor`, () => {
-    const d = new Director(seed);
+    // Megastructures at a third of the stretches, so every kind is checked.
+    const d = new Director(seed, { megaChance: 0.35 });
     const path = d.path;
     for (let i = 0; i < N; i++) {
-      for (const t of d.segment(i).things) {
-        const r = reach(t);
-        if (!r) continue;
-        const c = path.clearance(r.at, (i - 3) * SEGMENT, (i + 4) * SEGMENT, 50);
-        assert.ok(c > CORRIDOR + r.r - 25, `segment ${i}: ${t.type} at ${c.toFixed(0)} m, needs ${(CORRIDOR + r.r).toFixed(0)}`);
-      }
+      for (const t of d.segment(i).things)
+        for (const r of reach(t)) {
+          const c = path.clearance(r.at, (i - 3) * SEGMENT, (i + 4) * SEGMENT, 50);
+          assert.ok(c > CORRIDOR + r.r - 25, `segment ${i}: ${t.type} at ${c.toFixed(0)} m, needs ${(CORRIDOR + r.r).toFixed(0)}`);
+        }
     }
   });
 
@@ -114,4 +121,76 @@ test('the autopilot slows for fields and ruins and opens up in empty space', () 
   assert.ok(cruiseSpeed('field') < cruiseSpeed('nebula'));
   assert.ok(cruiseSpeed('ruins') < cruiseSpeed('planet'));
   assert.ok(cruiseSpeed('drift') > cruiseSpeed('star'));
+});
+
+test('megastructures turn up in the share asked for', () => {
+  for (const chance of [0.05, MEGA_CHANCE, 0.3]) {
+    const d = new Director(1337, { megaChance: chance });
+    const n = 4000;
+    let hits = 0;
+    for (let i = MEGA_FROM; i < MEGA_FROM + n; i++) if (d.hasMega(i)) hits++;
+    // Within four standard deviations of the binomial.
+    const sd = Math.sqrt(n * chance * (1 - chance));
+    assert.ok(Math.abs(hits - n * chance) < 4 * sd, `chance ${chance}: ${hits} of ${n}`);
+  }
+});
+
+test('the default share is ten percent, and the URL can set it from none to every stretch', () => {
+  assert.equal(new Director(1).megaChance, 0.1);
+  const none = new Director(9, { megaChance: 0 });
+  const all = new Director(9, { megaChance: 1 });
+  for (let i = 0; i < 40; i++) {
+    assert.notEqual(none.segment(i).kind, 'mega');
+    assert.equal(all.segment(i).kind === 'mega', i >= MEGA_FROM, `segment ${i}`);
+  }
+  assert.equal(new Director(1, { megaChance: 7 }).megaChance, 1);
+  assert.equal(new Director(1, { megaChance: -1 }).megaChance, 0);
+  assert.equal(new Director(1, { megaChance: NaN }).megaChance, MEGA_CHANCE);
+});
+
+test('a higher chance only adds megastructures, never moves them', () => {
+  const low = new Director(21, { megaChance: 0.1 });
+  const high = new Director(21, { megaChance: 0.3 });
+  let added = 0;
+  for (let i = 0; i < 400; i++) {
+    if (low.hasMega(i)) assert.ok(high.hasMega(i), `stretch ${i} lost its megastructure`);
+    else if (high.hasMega(i)) added++;
+  }
+  assert.ok(added > 0);
+});
+
+test('a megastructure has the sky to itself and is one of three kinds', () => {
+  const kinds = new Set<string>();
+  for (const seed of [1, 2, 3, 1337]) {
+    const d = new Director(seed, { megaChance: 0.25 });
+    const segs = Array.from({ length: 160 }, (_, i) => d.segment(i));
+    for (const s of segs) {
+      if (s.kind !== 'mega') {
+        assert.ok(!s.things.some((t) => t.type === 'gate' || t.type === 'habitat' || t.type === 'lattice'), `seed ${seed}: megastructure outside a mega stretch`);
+        continue;
+      }
+      assert.equal(s.things.length, 1);
+      kinds.add(s.things[0]!.type);
+      for (const k of [s.index - 1, s.index + 1]) assert.ok(!['planet', 'star'].includes(segs[k]?.kind ?? ''), `seed ${seed}: ${segs[k]?.kind} next to a megastructure at ${s.index}`);
+    }
+  }
+  assert.deepEqual([...kinds].sort(), ['gate', 'habitat', 'lattice']);
+});
+
+test('a megastructure keeps to the middle of its stretch', () => {
+  const d = new Director(77, { megaChance: 1 });
+  for (let i = MEGA_FROM; i < MEGA_FROM + 30; i++) {
+    const m = d.segment(i).things[0]!;
+    if (m.type !== 'gate' && m.type !== 'habitat' && m.type !== 'lattice') assert.fail(`segment ${i} holds a ${m.type}`);
+    const mid = d.path.frame((i + 0.5) * SEGMENT);
+    for (const { at } of megaSpheres(m)) {
+      // How far along the path the part sits from the middle of the stretch.
+      const along = (at[0] - mid.position[0]) * mid.forward[0] + (at[1] - mid.position[1]) * mid.forward[1] + (at[2] - mid.position[2]) * mid.forward[2];
+      assert.ok(Math.abs(along) < SEGMENT * 0.36, `segment ${i}: ${m.type} part ${along.toFixed(0)} m from the middle`);
+    }
+  }
+});
+
+test('the autopilot slows down to take in a megastructure', () => {
+  assert.ok(cruiseSpeed('mega') < cruiseSpeed('nebula'));
 });

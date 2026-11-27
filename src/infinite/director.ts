@@ -1,12 +1,14 @@
 import { createRng, type Rng } from '../core/rng.ts';
 import { makeName } from '../world/names.ts';
 import { ATMOSPHERE, NEBULA_COLORS, PALETTES, RADIUS_RANGE, type Asteroid, type Planet, type PlanetKind, type Vec3 } from '../world/generate.ts';
+import { MEGA_KINDS, habitatReach, megaSpheres, type Habitat, type Lattice, type Megastructure } from '../world/megastructures.ts';
 
 /**
  * Infinite flight, as plain data: an endless gently curving path, and for every stretch of it a
  * scene — an asteroid field to thread, a nebula to cross, a planet or a star to pass, ruins to
- * drift by, or open space to breathe. Everything is placed outside a corridor around the path,
- * so the autopilot never has to dodge, and the whole thing is a pure function of the seed.
+ * drift by, open space to breathe, and now and then a megastructure. Everything is placed
+ * outside a corridor around the path (a ring gate's path runs through its middle), so the
+ * autopilot never has to dodge, and the whole thing is a pure function of the seed.
  */
 
 /** Length of one stretch of path, in metres. */
@@ -14,7 +16,18 @@ export const SEGMENT = 6000;
 /** Nothing solid comes closer to the path than this plus its own radius. */
 export const CORRIDOR = 140;
 
-export type SceneKind = 'drift' | 'field' | 'nebula' | 'planet' | 'star' | 'ruins';
+export type SceneKind = 'drift' | 'field' | 'nebula' | 'planet' | 'star' | 'ruins' | 'mega';
+
+/**
+ * The share of stretches that hold a megastructure (a ring gate, a habitat cylinder or a Dyson
+ * lattice), 0..1. Each stretch rolls for it on its own, so this is the share you get.
+ * `?mega=<percent>` in the URL overrides it.
+ */
+export const MEGA_CHANCE = 0.1;
+/** The first stretches stay calm: no megastructure before this one. */
+export const MEGA_FROM = 3;
+
+export type DirectorOptions = { megaChance?: number };
 
 export type Thing =
   | { type: 'rocks'; center: Vec3; radius: number; count: number; seed: number }
@@ -23,7 +36,8 @@ export type Thing =
   | { type: 'star'; position: Vec3; radius: number; color: number; name: string }
   | { type: 'wreck'; position: Vec3; size: number; pieces: number; seed: number }
   | { type: 'station'; position: Vec3; size: number; kind: 'spine' | 'ring'; pieces: number; seed: number }
-  | { type: 'graveyard'; center: Vec3; radius: number; satellites: number; seed: number };
+  | { type: 'graveyard'; center: Vec3; radius: number; satellites: number; seed: number }
+  | Megastructure;
 
 export type Segment = {
   index: number;
@@ -131,24 +145,37 @@ function catmullDerivative(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, u: number): V
 
 // --- the director --------------------------------------------------------------------------
 
-const WEIGHTS: Record<SceneKind, number> = { drift: 0.14, field: 0.26, nebula: 0.16, planet: 0.2, star: 0.08, ruins: 0.16 };
+const WEIGHTS: Record<Exclude<SceneKind, 'mega'>, number> = { drift: 0.14, field: 0.26, nebula: 0.16, planet: 0.2, star: 0.08, ruins: 0.16 };
 /** A star at most this often, a planet not back to back. */
 const STAR_GAP = 6;
 
 /**
  * Hands out segments in order, remembering enough of the past to pace them: no star too soon
- * after the last, never two nebulae or planets back to back, no three fields in a row.
+ * after the last, never two nebulae or planets back to back, no three fields in a row. A
+ * megastructure has the sky to itself: no planet or star in the stretch either side of it.
  */
 export class Director {
   readonly path: Path;
+  /** The share of stretches with a megastructure, 0..1. */
+  readonly megaChance: number;
   private readonly seed: number;
   private readonly segments: Segment[] = [];
   private lastStar = -Infinity;
   private light: Vec3 = [60000, 30000, -90000];
 
-  constructor(seed: number) {
+  constructor(seed: number, opts: DirectorOptions = {}) {
     this.seed = seed;
     this.path = new Path(seed);
+    const p = opts.megaChance ?? MEGA_CHANCE;
+    this.megaChance = Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : MEGA_CHANCE;
+  }
+
+  /**
+   * Whether stretch i holds a megastructure: its own roll from the seed, independent of every
+   * other stretch, so the share matches `megaChance` and a higher chance only adds more.
+   */
+  hasMega(i: number): boolean {
+    return i >= MEGA_FROM && createRng(this.seed).fork(`mega-${i}`).next() < this.megaChance;
   }
 
   segment(i: number): Segment {
@@ -156,13 +183,15 @@ export class Director {
     return this.segments[i]!;
   }
 
-  private pickKind(i: number, rng: Rng): SceneKind {
+  private pickKind(i: number, rng: Rng): keyof typeof WEIGHTS {
     if (i === 0) return 'drift';
     if (i === 1) return 'field';
     const prev = this.segments[i - 1]!.kind;
     const prev2 = this.segments[i - 2]?.kind;
-    const allowed = (Object.keys(WEIGHTS) as SceneKind[]).filter((k) => {
+    const nearMega = this.hasMega(i - 1) || this.hasMega(i + 1);
+    const allowed = (Object.keys(WEIGHTS) as Array<keyof typeof WEIGHTS>).filter((k) => {
       if (k === 'star' && i - this.lastStar < STAR_GAP) return false;
+      if ((k === 'planet' || k === 'star') && nearMega) return false;
       if ((k === 'nebula' || k === 'planet' || k === 'star' || k === 'drift') && k === prev) return false;
       if (k === 'field' && prev === 'field' && prev2 === 'field') return false;
       return true;
@@ -178,7 +207,7 @@ export class Director {
 
   private make(i: number): Segment {
     const rng = createRng(this.seed).fork(`segment-${i}`);
-    const kind = this.pickKind(i, rng);
+    const kind: SceneKind = this.hasMega(i) ? 'mega' : this.pickKind(i, rng);
     const things: Thing[] = [];
     const path = this.path;
     const s0 = i * SEGMENT;
@@ -255,6 +284,9 @@ export class Director {
         }
         break;
       }
+      case 'mega':
+        things.push(this.megastructure(rng, s0));
+        break;
       case 'drift':
         // Open space, now and then a far planet on the horizon.
         if (rng.chance(0.4)) {
@@ -265,6 +297,49 @@ export class Director {
         break;
     }
     return { index: i, kind, name, things, light: this.light };
+  }
+
+  /**
+   * One megastructure in the middle of the stretch (it keeps to the middle three fifths, so
+   * the neighbours' fields and ruins never reach it). A gate straddles the path; a habitat or a
+   * lattice starts a set distance out and is pushed further until every part clears the corridor.
+   */
+  private megastructure(rng: Rng, s0: number): Megastructure {
+    const path = this.path;
+    const mid = path.frame(s0 + SEGMENT / 2);
+    const kind = rng.pick(MEGA_KINDS);
+    const seed = rng.int(1, 1e9);
+    const out = (angle: number): Vec3 => add(scale(mid.right, Math.cos(angle)), scale(mid.up, Math.sin(angle)));
+    // The path samples once, then every sphere checks against them.
+    const samples: Vec3[] = [];
+    for (let s = Math.max(0, s0 - SEGMENT); s <= s0 + 2 * SEGMENT; s += 60) samples.push(path.at(s));
+    const clear = (m: Megastructure) => megaSpheres(m).every(({ at, r }) => samples.every((q) => distance(at, q) > CORRIDOR + r));
+    const settle = (make: (d: number) => Megastructure, d0: number): Megastructure => {
+      let m = make(d0);
+      for (let k = 0; k < 12 && !clear(m); k++) m = make(d0 * (1.2 + k * 0.15));
+      return m;
+    };
+    switch (kind) {
+      case 'gate':
+        return { type: 'gate', center: mid.position, axis: mid.forward, up: mid.up, radius: rng.range(650, 1000), seed };
+      case 'habitat': {
+        const radius = rng.range(450, 650);
+        const length = rng.range(2200, 2800);
+        const dir = out(rng.range(-0.8, 0.8) + (rng.chance(0.5) ? 0 : Math.PI));
+        const make = (d: number): Habitat => ({ type: 'habitat', center: add(mid.position, scale(dir, d)), axis: mid.forward, up: dir, radius, length, seed });
+        return settle(make, CORRIDOR + habitatReach(radius, length) + rng.range(150, 450));
+      }
+      case 'lattice': {
+        // Off to a side or overhead, hollow side to the path.
+        const dir = out(rng.range(0.25, Math.PI - 0.25));
+        const curve = rng.range(9000, 14000);
+        const width = rng.range(1300, 1750);
+        const height = rng.range(800, 1200);
+        const cell = rng.range(95, 125);
+        const make = (d: number): Lattice => ({ type: 'lattice', center: add(mid.position, scale(dir, d)), facing: scale(dir, -1), along: mid.forward, curve, width, height, cell, seed });
+        return settle(make, CORRIDOR + rng.range(800, 1400));
+      }
+    }
   }
 
   private planet(rng: Rng, i: number, k: number, kinds: PlanetKind[] = ['lava', 'desert', 'rocky', 'terran', 'gas', 'gas', 'ice']): Planet {
@@ -324,13 +399,15 @@ export function wantedSegments(s: number): number[] {
   return out;
 }
 
-/** Cruise speed for a kind of scene: slow through fields and ruins, fast across open space. */
+/** Cruise speed for a kind of scene: slow through fields, ruins and megastructures, fast across open space. */
 export function cruiseSpeed(kind: SceneKind): number {
   switch (kind) {
     case 'field':
       return 240;
     case 'ruins':
       return 220;
+    case 'mega':
+      return 320;
     case 'nebula':
       return 380;
     case 'planet':

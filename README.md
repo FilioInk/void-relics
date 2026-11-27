@@ -76,7 +76,14 @@ corner.
 path while asteroid fields, nebulae, planets (some ringed, some with a moon), stars, station
 ruins and satellite graveyards are generated ahead of it and dropped behind. The autopilot
 slows through fields and ruins, opens up across empty space, and in fields picks off a rock now
-and then. The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
+and then.
+
+**Megastructures** fill one 6 km stretch in ten: a **ring gate** the path flies through, an
+**O'Neill habitat** — a spinning cylinder with window strips, opened mirrors and a ring of
+greenhouses — beside it, or a torn patch of a **Dyson lattice** of hexagonal collectors curving
+overhead. The autopilot slows down to take them in, and no planet or star shares the sky with
+one. The share is `MEGA_CHANCE` in `src/infinite/director.ts`; `?mega=<percent>` in the URL
+overrides it (`?mega=100` puts one in every stretch after the first three, `?mega=0` none). The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
 cockpit. The only things on screen are the name of each new place as it fades in and two small
 buttons in the bottom-right corner: a note that switches the music off and on (or **M**; it is
 the same setting as Music in the menu) and full screen (or **F**). The buttons and the cursor

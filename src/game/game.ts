@@ -61,6 +61,8 @@ export class Game {
   private readonly bloom: BloomPass;
   private readonly renderPass: RenderPass;
   private infinite: InfiniteFlight | null = null;
+  /** `?mega=`: the share of infinite-flight stretches with a megastructure, or the default. */
+  private readonly megaChance: number | undefined;
   private readonly scene = new THREE.Scene();
   // Fog lives on the scene for the whole session and is only thinned to zero outside nebulae:
   // swapping it for null at a nebula edge made every material pick a new shader (a hitch).
@@ -144,8 +146,9 @@ export class Game {
   private stillTime: number | null = null;
   private captureNext: ((dataUrl: string) => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean, perf = false) {
+  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean, perf = false, megaChance?: number) {
     this.ui = ui;
+    this.megaChance = megaChance;
     this.seed = seed;
     this.settings = settings;
     this.debug = debug;
@@ -375,6 +378,7 @@ export class Game {
       onBack: () => this.exitInfinite(),
       music: this.settings.music,
       onMusic: () => this.toggleMusic(),
+      megaChance: this.megaChance,
     });
     this.ui.append(this.infinite.overlay);
     // The ?perf=1 readout stays out of the picture here; __vr.perf() still reads it.

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Target } from '../game/targets.ts';
 import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
 import { createDebris } from '../render/debris.ts';
+import { createMegastructure } from '../render/megastructures.ts';
 import { createNebulae } from '../render/nebula.ts';
 import { createPlanet } from '../render/planets.ts';
 import { createSun } from '../render/sun.ts';
@@ -114,6 +115,14 @@ function build(thing: Thing, segment: Segment, chunk: Chunk, ctx: StreamContext,
       const view = createWrecks([{ id: 'w', name: '', position: [0, 0, 0], size: thing.size, pieces: thing.pieces, seed: thing.seed }]);
       put(view.group, thing.position);
       chunk.updaters.push((_dt, t) => view.update(t));
+      break;
+    }
+    case 'gate':
+    case 'habitat':
+    case 'lattice': {
+      const view = createMegastructure(thing, ctx.envMap);
+      put(view.group, thing.center);
+      chunk.updaters.push((dt, t) => view.update(t, dt));
       break;
     }
     case 'station':

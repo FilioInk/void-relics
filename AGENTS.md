@@ -22,6 +22,8 @@ node scripts/icons.mjs   # redraw public/icons/ after changing the mark
 URL parameters: `?seed=<integer>` picks the galaxy (default 1337), `?debug=1` exposes
 `window.__vr` (teleport, press keys, aim, fire, open the map, `touch(true)` to force the touch
 controls on in a desktop window) for poking the game from the console.
+`?mega=<percent>` sets the share of infinite-flight stretches with a megastructure (default
+`MEGA_CHANCE`, 10%); `?mega=100` is the quick way to look at them.
 `?perf=1` shows a corner readout: FPS, frame / CPU / GPU ms (average and p95 over the last 240
 frames), draw calls, triangles and shader programs from `renderer.info`.
 
@@ -56,15 +58,18 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 
 - `src/core/` — seeded RNG and CPU noise.
 - `src/infinite/` — infinite flight: `director.ts` (the endless path and what each 6 km segment
-  holds, pure and tested), `stream.ts` (builds a segment with the regular `src/render/`
-  builders, a few things per frame, and frees it behind the ship), `flight.ts` (autopilot,
+  holds, pure and tested; each segment rolls on its own for a megastructure), `stream.ts`
+  (builds a segment with the regular `src/render/` builders, a few things per frame, and frees
+  it behind the ship), `flight.ts` (autopilot,
   cameras, origin shifts, autopilot guns, place-name captions, the music and full-screen
   buttons). `src/ui/fullscreen.ts` wraps the Fullscreen API with the Safari fallback;
   `src/ui/wakeLock.ts` keeps the screen on while the game is full screen or the installed app.
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
   wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
   `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
-  `names.ts` (generated names).
+  `names.ts` (generated names), `megastructures.ts` (ring gate, habitat, Dyson lattice: their
+  proportions, lattice panels, and `megaSpheres()`, the spheres the director keeps clear of the
+  flight corridor).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
   heat, collisions, hull), `progress.ts` (relics found, salvage, broken targets, saves),
   `weapons.ts` (rate of fire, heat; the muzzles come from `ship.ts`), `targets.ts` (what bolts hit, how many hits
@@ -73,7 +78,8 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - `src/render/` — three.js builders: sky, sun, planets, asteroids, nebula smoke, wrecks,
   orbital debris (`debris.ts`: stations, instanced satellites, junk, distance glints), relics,
   the player ship (`ship.ts`, skinned by `plating.ts`), speed dust, laser effects (`combat.ts`:
-  bolts, sparks, fragments, salvage, relic shells — all pooled). Shared GLSL in `glsl.ts`.
+  bolts, sparks, fragments, salvage, relic shells — all pooled), infinite flight's megastructures
+  (`megastructures.ts`). Shared GLSL in `glsl.ts`.
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
   the scales and chord progressions; `rocket.ts` is the engine's pure maths (noise colours,
   crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
@@ -104,6 +110,10 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   A new shader that reads world positions must go through `modelMatrix`/`modelViewMatrix`
   (the nebula once used `viewMatrix` directly and could not be moved), and a builder that
   bakes world positions into uniforms has to register them in the chunk's `vectors`.
+- **A megastructure is drawn from the same numbers the director checks.** `GATE` and `HABITAT`
+  in `src/world/megastructures.ts` set both the shapes `src/render/megastructures.ts` builds and
+  the spheres `megaSpheres()` keeps out of the corridor. A part that grows inward (toward the
+  path) needs a bigger sphere there too, or the ship will fly through it.
 - **One light per star would recompile everything.** Three.js rebuilds every material's
   shader when the number of lights changes, so infinite flight drops each star's PointLight
   and moves a single DirectionalLight instead.

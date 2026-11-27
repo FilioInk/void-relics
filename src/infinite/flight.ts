@@ -14,8 +14,8 @@ import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
 /**
  * Infinite flight: the ship flies itself down an endless path while the director lays out
- * fields, nebulae, planets, stars and ruins ahead of it. The camera cuts between a few
- * cinematic angles, and in asteroid fields the autopilot picks off rocks now and then.
+ * fields, nebulae, planets, stars, ruins and megastructures ahead of it. The camera cuts between
+ * a few cinematic angles, and in asteroid fields the autopilot picks off rocks now and then.
  *
  * The flight itself is simulated in absolute coordinates (plain JS doubles); the scene is drawn
  * relative to an origin that jumps forward every so often, so the GPU never sees huge numbers.
@@ -121,13 +121,15 @@ export class InfiniteFlight {
     /** Whether the music plays now, for the music button's icon. */
     music: boolean;
     onMusic: () => void;
+    /** The share of stretches with a megastructure (`?mega=`), or the director's default. */
+    megaChance?: number;
   }) {
     this.renderer = opts.renderer;
     this.camera = opts.camera;
     this.sounds = opts.sounds;
     this.envMap = opts.envMap;
     this.seed = opts.seed;
-    this.director = new Director(opts.seed);
+    this.director = new Director(opts.seed, { megaChance: opts.megaChance });
 
     this.scene.background = opts.envMap;
     this.scene.fog = this.fog;
@@ -537,12 +539,16 @@ export class InfiniteFlight {
     this.segmentShown = seg.index;
     const planet = seg.things.find((x) => x.type === 'planet');
     const station = seg.things.find((x) => x.type === 'station');
+    const mega = seg.things.find((x) => x.type === 'gate' || x.type === 'habitat' || x.type === 'lattice');
     const text =
       seg.kind === 'field' ? t('regionField', { name: seg.name })
       : seg.kind === 'nebula' ? t('regionNebula', { name: seg.name })
       : seg.kind === 'star' ? t('regionStar', { name: seg.name })
       : seg.kind === 'planet' && planet?.type === 'planet' ? t('regionPlanet', { name: planet.planet.name })
       : seg.kind === 'ruins' ? (station ? t('regionStation', { name: seg.name }) : t('regionWreck', { name: seg.name }))
+      : mega?.type === 'gate' ? t('regionGate', { name: seg.name })
+      : mega?.type === 'habitat' ? t('regionHabitat', { name: seg.name })
+      : mega?.type === 'lattice' ? t('regionLattice', { name: seg.name })
       : t('regionDeep');
     this.caption.textContent = text;
     this.caption.classList.remove('show');
