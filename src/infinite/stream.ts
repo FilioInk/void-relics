@@ -8,6 +8,7 @@ import { createPlanet } from '../render/planets.ts';
 import { createSun } from '../render/sun.ts';
 import { createWrecks } from '../render/wrecks.ts';
 import type { Asteroid, Vec3 } from '../world/generate.ts';
+import { starLook } from '../world/stars.ts';
 import { fieldRocks, type Path, type Segment, type Thing } from './director.ts';
 
 /**
@@ -18,7 +19,7 @@ import { fieldRocks, type Path, type Segment, type Thing } from './director.ts';
  */
 
 /** A star the camera might look at: for exposure, mood and the key light. */
-export type StarRef = { position: THREE.Vector3; radius: number };
+export type StarRef = { position: THREE.Vector3; radius: number; setFade(f: number): void };
 /** A nebula the ship might fly through: for fog and tint. Centre in absolute coordinates. */
 export type NebulaRef = { center: Vec3; radius: number; colors: [number, number] };
 
@@ -106,12 +107,16 @@ function build(thing: Thing, segment: Segment, chunk: Chunk, ctx: StreamContext,
       break;
     }
     case 'star': {
-      const view = createSun({ position: [0, 0, 0], radius: thing.radius, heatRadius: thing.radius, warnRadius: thing.radius, color: thing.color, name: thing.name });
+      // The look carries the colours; the Sun's own `color` only tints the relic hunt's star.
+      const look = starLook(thing.star);
+      const view = createSun({ position: [0, 0, 0], radius: thing.radius, heatRadius: thing.radius, warnRadius: thing.radius, color: 0xffffff, name: thing.name }, look, true);
       // One key light for the whole flight instead: a light per star would recompile every material.
       view.group.remove(view.light);
+      // Faded out until the flight says otherwise, so it never flashes in at full strength.
+      view.setFade(0);
       put(view.group, thing.position);
       chunk.updaters.push((_dt, t, camera) => view.update(t, camera));
-      chunk.stars.push({ position: view.group.position, radius: thing.radius });
+      chunk.stars.push({ position: view.group.position, radius: thing.radius, setFade: (f) => view.setFade(f) });
       break;
     }
     case 'wreck': {

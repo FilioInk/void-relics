@@ -11,6 +11,7 @@ import {
   GIGA_FROM,
   MEGA_CHANCE,
   MEGA_FROM,
+  STAR_FADE,
   Path,
   SEGMENT,
   cruiseSpeed,
@@ -18,9 +19,11 @@ import {
   fieldRocks,
   isGiga,
   isMega,
+  starPresence,
   wantedSegments,
   type Thing,
 } from './director.ts';
+import { gameRadius, type StarFamily } from '../world/stars.ts';
 
 const N = 60;
 
@@ -227,12 +230,12 @@ test('gigastructures are rarer, and turn up in the share asked for', () => {
 });
 
 test('a gigastructure comes with its own star, which lights its stretch', () => {
-  const d = new Director(8, { gigaChance: 1, megaChance: 0 });
+  const d = new Director(8, { gigaChance: 0.3, megaChance: 0 });
   const kinds = new Set<string>();
-  for (let i = 0; i < GIGA_FROM + 12; i++) {
+  for (let i = 0; i < 120; i++) {
     const s = d.segment(i);
     const g = s.things.find(isGiga);
-    assert.equal(!!g, i >= GIGA_FROM, `segment ${i}`);
+    if (g) assert.ok(d.hasGiga(i), `segment ${i} has one it did not roll`);
     if (!g) continue;
     kinds.add(g.type);
     const star = s.things.find((t) => t.type === 'star');
@@ -244,9 +247,9 @@ test('a gigastructure comes with its own star, which lights its stretch', () => 
 });
 
 test('a ringworld arches over the path, and the path runs inside it', () => {
-  const d = new Director(3, { gigaChance: 1 });
+  const d = new Director(3, { gigaChance: 0.25 });
   let rings = 0;
-  for (let i = GIGA_FROM; i < GIGA_FROM + 20; i++) {
+  for (let i = GIGA_FROM; i < 150; i++) {
     const g = d.segment(i).things.find(isGiga);
     if (g?.type !== 'ringworld') continue;
     rings++;
@@ -261,7 +264,7 @@ test('a ringworld arches over the path, and the path runs inside it', () => {
 
 for (const seed of [5, 42]) {
   test(`seed ${seed}: a gigastructure stays clear of the path and of everything loaded with it`, () => {
-    const d = new Director(seed, { gigaChance: 0.15, megaChance: 0.2 });
+    const d = new Director(seed, { gigaChance: 0.25, megaChance: 0.2 });
     let checked = 0;
     for (let k = GIGA_FROM; k < 70; k++) {
       const g = d.segment(k).things.find(isGiga);
@@ -273,10 +276,15 @@ for (const seed of [5, 42]) {
         const p = d.path.at(s);
         for (const x of spheres) assert.ok(distance(p, x.at) > GIGA_CLEAR + x.r - 300, `segment ${k}: ${g.type} too near the path`);
       }
-      // Everything in memory alongside it keeps clear of it (a star by its body, not its glow).
+      // Everything in memory alongside it keeps clear of it (a star by its body, not its glow),
+      // other gigastructures included.
       for (let i = Math.max(0, k - GIGA_AHEAD - 1); i <= k + GIGA_BEHIND + 3; i++)
         for (const t of d.segment(i).things) {
-          if (isGiga(t) || (t.type === 'star' && i === k)) continue;
+          if (isGiga(t)) {
+            if (t !== g) for (const y of gigaSpheres(t)) for (const x of spheres) assert.ok(distance(y.at, x.at) > x.r + y.r, `the ${t.type} of ${i} touches the ${g.type} of ${k}`);
+            continue;
+          }
+          if (t.type === 'star' && i === k) continue;
           const r = t.type === 'star' ? { at: t.position, r: t.radius * 1.2 } : reach(t)[0];
           if (!r) continue;
           for (const x of spheres) assert.ok(distance(r.at, x.at) > r.r + x.r * 0.5, `segment ${i}: a ${t.type} touches the ${g.type} of ${k}`);
@@ -293,4 +301,76 @@ test('a gigastructure is loaded early and kept a while', () => {
   assert.ok(at(20 + GIGA_BEHIND).includes(20));
   assert.ok(!at(20 + GIGA_BEHIND + 1).includes(20));
   assert.deepEqual(at(5), [4, 5, 6, 7, 8]);
+});
+
+test('stars come in every class, sized and lit by their class', () => {
+  const families = new Set<StarFamily>();
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const d = new Director(seed);
+    for (let i = 0; i < 200; i++) {
+      const seg = d.segment(i);
+      for (const thing of seg.things) {
+        if (thing.type !== 'star') continue;
+        families.add(thing.star.family);
+        assert.equal(thing.radius, gameRadius(thing.star));
+        // Lit by the star it shows: the segment's light comes from the star itself.
+        assert.equal(seg.lightStar, thing.star);
+        assert.deepEqual(seg.light, thing.position);
+        const off = d.path.clearance(thing.position, i * SEGMENT, (i + 1) * SEGMENT, 100);
+        assert.ok(off > thing.radius * 2.6, `segment ${i}: a ${thing.star.family} of ${thing.radius.toFixed(0)} m passed at ${off.toFixed(0)} m`);
+      }
+    }
+  }
+  assert.equal(families.size, 11, `seen: ${[...families].join(', ')}`);
+});
+
+test('the same seed draws the same stars', () => {
+  const stars = (seed: number) =>
+    Array.from({ length: 80 }, (_, i) => new Director(seed).segment(i).things.find((t) => t.type === 'star'))
+      .filter((t) => t !== undefined)
+      .map((t) => (t.type === 'star' ? t.star : null));
+  assert.deepEqual(stars(21), stars(21));
+});
+
+test('a star fades in after its segment loads and out before it is freed', () => {
+  const i = 10;
+  const load = (i - 3) * SEGMENT;
+  const free = (i + 2) * SEGMENT;
+  assert.equal(starPresence(i, load), 0);
+  assert.ok(starPresence(i, load + STAR_FADE / 2) > 0.2 && starPresence(i, load + STAR_FADE / 2) < 0.8);
+  for (let s = load + STAR_FADE + 300; s < free - STAR_FADE; s += 500) assert.equal(starPresence(i, s), 1);
+  assert.equal(starPresence(i, free - 100), 0);
+  assert.equal(starPresence(i, Number.NaN), 1);
+  // Loaded exactly over that stretch.
+  assert.ok(wantedSegments(load).includes(i) && !wantedSegments(load - 1).includes(i));
+  assert.ok(wantedSegments(free - 1).includes(i) && !wantedSegments(free).includes(i));
+});
+
+test("a gigastructure's star keeps the gigastructure's longer window", () => {
+  const i = 20;
+  const load = (i - GIGA_AHEAD) * SEGMENT;
+  const free = (i + GIGA_BEHIND + 1) * SEGMENT;
+  assert.equal(starPresence(i, load, true), 0);
+  assert.equal(starPresence(i, load + STAR_FADE + 300, true), 1);
+  assert.equal(starPresence(i, free - 100, true), 0);
+  assert.ok(wantedSegments(load, (k) => k === i).includes(i) && !wantedSegments(load - 1, (k) => k === i).includes(i));
+  assert.ok(wantedSegments(free - 1, (k) => k === i).includes(i) && !wantedSegments(free, (k) => k === i).includes(i));
+});
+
+test('almost every gigastructure rolled finds room, and stars still come often', () => {
+  let rolled = 0;
+  let made = 0;
+  for (const seed of [1, 2, 3, 1337]) {
+    const d = new Director(seed);
+    let stars = 0;
+    for (let i = 0; i < 600; i++) {
+      const s = d.segment(i);
+      if (d.hasGiga(i)) rolled++;
+      if (s.things.some(isGiga)) made++;
+      if (s.kind === 'star') stars++;
+    }
+    // Megastructures take some stretches and keep stars off their neighbours: still one in 40.
+    assert.ok(stars >= 15, `seed ${seed}: ${stars} stars in 600 stretches`);
+  }
+  assert.ok(made >= rolled * 0.85, `${made} of ${rolled} made`);
 });

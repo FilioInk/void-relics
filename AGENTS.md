@@ -70,7 +70,10 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
   wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
   `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
-  `names.ts` (generated names), `megastructures.ts` (the chances; ring gate, habitat, Dyson
+  `names.ts` (generated names), `stars.ts` (star classes from reference tables: the class,
+  temperature, radius and luminosity of each infinite-flight star, its colour from a black body,
+  and how it is drawn — size, palette, brightness, corona, the light it casts),
+  `megastructures.ts` (the chances; ring gate, habitat, Dyson
   lattice, ringworld, Dyson rings: their proportions, `megaSpheres()` / `gigaSpheres()` /
   `bandDistance()` for keeping them clear, `megaColliders()` / `gigaBands()` for collisions).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
@@ -102,6 +105,14 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   target (the chunks then compile to nothing); elsewhere it falls back to
   `logarithmicDepthBuffer`, and a `ShaderMaterial` without `VERT_HEAD/VERT_TAIL/FRAG_HEAD/
   FRAG_TAIL` from `src/render/glsl.ts` depth-sorts wrongly against everything else there.
+- **Nothing may sit exactly on a clip plane.** Under reversed depth `z = w` is the *near*
+  plane, and three's sky-box shader puts the box right there (`gl_Position.z = gl_Position.w`,
+  meant as "at the far plane"). A Mali-G615 in Chrome for Android clipped it into black
+  stair-steps and triangles that moved with the view. `createSky()` patches the shader
+  (`backgroundVertexFix()` in `src/render/glsl.ts`); a new shader that forces its own depth
+  must land strictly inside the clip volume too. Desktop GPUs never show this, so a rendering
+  change is worth a look on a phone: `npx vite --host --port <port>` and the Mac's LAN address
+  in the phone's Chrome, on the same Wi-Fi.
 - **Bloom is split across two passes.** `BloomPass` (`src/render/post.ts`) only builds the
   glow; `BloomOutputPass` adds it during tone mapping. Something inserted between them sees the
   scene without bloom; a pass after the output would need the glow added differently.
@@ -121,9 +132,19 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   crown, the gate's ring, Dyson rings) may turn.
 - **A gigastructure outlives its stretch.** It is loaded `GIGA_AHEAD` stretches early and kept
   `GIGA_BEHIND` after (`wantedSegments`), and fades in because it is already in view when it
-  loads. No part of it comes within `GIGA_CLEAR` (20 km) of the path, and all the regular
-  scenery keeps within ~15 km of the path, so the two never touch; far planets are skipped
-  while one is loaded. Anything new that reaches further from the path has to respect that.
+  loads; its star fades over the same window (`starPresence(i, s, true)`). No part of it
+  comes within `GIGA_CLEAR` (20 km) of the path, and the small scenery keeps within ~15 km of
+  the path, so it never touches one. Stars and planets can stand much further off (a giant star
+  a hundred kilometres away), so they are checked body by body: a gigastructure skips any try
+  that would touch one already made alongside it, and a later star or planet that would touch
+  a gigastructure is left out (a star stretch becomes open space). Anything new that reaches
+  further from the path needs the same check.
+- **A star's numbers come from references; its look is tuned.** `src/world/stars.ts` keeps
+  the physical values (Mamajek's table, Levesque's scale, the published ranges) apart from
+  `starLook()`, which squeezes radii (R^0.4), deepens the pale black-body colours and caps the
+  surface brightness so the tone mapping does not turn every hot star white. Change the look
+  there, not the tables. The relic hunt's star still uses its old hand-tuned palette
+  (`createSun` without a look).
 - **One light per star would recompile everything.** Three.js rebuilds every material's
   shader when the number of lights changes, so infinite flight drops each star's PointLight
   and moves a single DirectionalLight instead.

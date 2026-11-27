@@ -91,21 +91,34 @@ and then.
 greenhouses — beside it, or a torn patch of a **Dyson lattice** of hexagonal collectors curving
 overhead. **Gigastructures** fill one stretch in fifty: a **ringworld** whose band of land and
 sea arches across the sky some 25 km overhead, its star far below, or **Dyson rings** around a
-star some 35 km off. They fade in long before you reach them and stay a while after. The
-autopilot slows down to take either in, and no planet or star shares the sky with one.
+star some 35 km off, each with a star of its own class. They fade in long before you reach
+them and stay a while after. The autopilot slows down to take either in, no planet or star
+shares their stretch or the ones beside it, and anything further off that would touch a
+gigastructure gives way to it.
 
 **The chances** are `MEGA_CHANCE` (10%) and `GIGA_CHANCE` (2%) in
 `src/world/megastructures.ts`. Every infinite-flight stretch rolls for each on its own; a star
 system has `SYSTEM_SITES` (20) sites that roll the same way, at most one gigastructure each.
 `?mega=<percent>` and `?giga=<percent>` in the URL override them in both modes (`?mega=100`
-puts a megastructure in every stretch after the first three; `?giga=0` turns gigastructures
-off). The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
+puts a megastructure in every stretch after the first three, `?giga=100` as many
+gigastructures as fit; `?giga=0` turns them off). The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
 cockpit. The only things on screen are the name of each new place as it fades in and two small
 buttons in the bottom-right corner: a note that switches the music off and on (or **M**; it is
 the same setting as Music in the menu) and full screen (or **F**). The buttons and the cursor
 fade out while the mouse rests. **C** changes the camera, **H** hides the place names, **Esc**
 goes back to the menu; on a touch screen, buttons do the camera and the way back. The journey
 is fixed by the galaxy seed.
+
+**Every star is a real kind of star.** Each one is drawn as a class — a main-sequence O, B, A,
+F, G, K or M star, a red giant, a red supergiant, a blue supergiant or a white dwarf — and gets
+its temperature and radius from published values for that class (Mamajek's dwarf sequence,
+Levesque et al. 2005 for red supergiants), with the luminosity from the Stefan–Boltzmann law.
+The temperature sets its colour (Planck's law through the CIE 1931 observer), its brightness,
+its corona and the colour of the light it throws on the ship and planets; the radius sets its
+size, squeezed so that a white dwarf is a dazzling few hundred metres and a red supergiant a
+wall of fire tens of kilometres across, seen from well over a hundred. A star's name comes with
+a line of its facts: "Red supergiant · M3 I · 3,580 K · 401 solar radii". Stars fade in and out
+as their stretch of the path is loaded and dropped.
 
 **Full screen keeps the screen on.** While the game is full screen, or opened as the installed
 app, it holds a screen wake lock, so a phone left to infinite flight does not dim and lock.

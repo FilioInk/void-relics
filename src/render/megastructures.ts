@@ -514,7 +514,8 @@ function ringworld(g: Ringworld, envMap: THREE.Texture | null): GigaView {
 function armillary(a: Armillary, envMap: THREE.Texture | null): GigaView {
   const rng = createRng(a.seed).fork('build');
   const group = new THREE.Group();
-  const panelMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.75, roughness: 0.35, flatShading: true, envMap, envMapIntensity: 1.1, transparent: true });
+  // A faint glow of their own keeps the collectors readable from the dark side, far off.
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0.05, 0.09, 0.16), metalness: 0.75, roughness: 0.35, flatShading: true, envMap, envMapIntensity: 1.1, transparent: true });
   const hoopMat = new THREE.MeshStandardMaterial({ color: 0x6a6e78, metalness: 0.7, roughness: 0.45, envMap, envMapIntensity: 0.8, transparent: true });
   const lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.7, 1.05, 0.45), transparent: true });
   const box = new THREE.BoxGeometry(1, 1, 1);
@@ -542,9 +543,9 @@ function armillary(a: Armillary, envMap: THREE.Texture | null): GigaView {
       panels.setMatrixAt(count, m);
       panels.setColorAt(count, new THREE.Color().setHSL(hue, 0.35, rng.range(0.1, 0.2)));
       count++;
-      if (k % 5 === 0) {
+      if (k % 3 === 0) {
         const out = r.radius + ARMILLARY_THICK / 2 + 3;
-        m.compose(new THREE.Vector3(Math.cos(ang) * out, Math.sin(ang) * out, 0), q, new THREE.Vector3(seg * 0.25, 6, r.width * 0.2));
+        m.compose(new THREE.Vector3(Math.cos(ang) * out, Math.sin(ang) * out, 0), q, new THREE.Vector3(seg * 0.35, 6, r.width * 0.3));
         lamps.setMatrixAt(lit++, m);
       }
     }

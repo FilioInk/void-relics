@@ -6,10 +6,11 @@ import { WEAPON, createWeapon, stepWeapon } from '../game/weapons.ts';
 import { createCombatFx, type CombatFx } from '../render/combat.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { GUN_MOUNTS, createShip, type ShipView } from '../render/ship.ts';
-import { t } from '../text.ts';
+import { t, type Key } from '../text.ts';
 import { h, icon } from '../ui/dom.ts';
 import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
-import { Director, SEGMENT, cruiseSpeed, distance, isGiga, isMega, wantedSegments, type Segment } from './director.ts';
+import { formatQuantity, starLook, type Star, type StarFamily } from '../world/stars.ts';
+import { Director, SEGMENT, cruiseSpeed, distance, isGiga, isMega, starPresence, wantedSegments, type Segment } from './director.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
 /**
@@ -61,6 +62,8 @@ export class InfiniteFlight {
   private readonly stars: THREE.Points;
   private readonly key: THREE.DirectionalLight;
   private readonly fill: THREE.DirectionalLight;
+  /** The key light each star casts, worked out once per star. */
+  private readonly keys = new WeakMap<Star, { color: THREE.Color; intensity: number }>();
 
   private s = 0;
   private speed = 200;
@@ -140,7 +143,7 @@ export class InfiniteFlight {
     this.scene.add(new THREE.AmbientLight(0x8090b0, 0.14));
     this.scene.add(new THREE.HemisphereLight(0x324058, 0x0a0806, 0.25));
     // One key light standing in for whichever star the story is near.
-    this.key = new THREE.DirectionalLight(0xfff0dc, 2.6);
+    this.key = new THREE.DirectionalLight(DEFAULT_KEY.color, DEFAULT_KEY.intensity);
     this.fill = new THREE.DirectionalLight(0x9fb4d8, 0.55);
     this.scene.add(this.key, this.key.target, this.fill, this.fill.target);
 
@@ -490,12 +493,22 @@ export class InfiniteFlight {
     this.ship.update(this.time, 1, this.boostLevel(), 0);
     this.stars.position.copy(this.camera.position);
     this.dust.update(this.camera, this.velocity, WHITE);
-    for (const c of this.chunks.values()) for (const u of c.updaters) u(dt, this.time, this.camera);
+    for (const [i, c] of this.chunks) {
+      for (const u of c.updaters) u(dt, this.time, this.camera);
+      if (c.stars.length > 0) {
+        const presence = starPresence(i, this.s, this.director.hasGiga(i));
+        for (const star of c.stars) star.setFade(presence);
+      }
+    }
     this.fx.update(dt, this.time);
-    // The key light comes from the story's star; the fill from behind the camera.
+    // The key light comes from the story's star, in its colour; the fill from behind the camera.
     const seg = this.director.segment(Math.floor(this.s / SEGMENT));
     const light = new THREE.Vector3(...seg.light).sub(this.pos).normalize();
     this.key.position.copy(shipAt).addScaledVector(light, 1000);
+    const key = this.keyOf(seg.lightStar);
+    const ease = approach(0.4, Number.isFinite(dt) ? Math.max(0, dt) : 0);
+    this.key.color.lerp(key.color, ease);
+    this.key.intensity += (key.intensity - this.key.intensity) * ease;
     this.key.target.position.copy(shipAt);
     this.fill.position.copy(this.camera.position);
     this.fill.target.position.copy(shipAt);
@@ -506,6 +519,17 @@ export class InfiniteFlight {
       this.fog.color.set(neb.colors[1]).multiplyScalar(0.12);
       this.fog.density = 0.00022 * neb.density;
     } else this.fog.density = 0;
+  }
+
+  private keyOf(star: Star | null): { color: THREE.Color; intensity: number } {
+    if (!star) return DEFAULT_KEY;
+    let key = this.keys.get(star);
+    if (!key) {
+      const look = starLook(star);
+      key = { color: new THREE.Color().setRGB(...look.light), intensity: look.lightIntensity };
+      this.keys.set(star, key);
+    }
+    return key;
   }
 
   private nebulaAt(): { density: number; colors: [number, number] | null } {
@@ -526,7 +550,9 @@ export class InfiniteFlight {
   private frameInfo(): FlightFrame {
     let star: FlightFrame['star'] = null;
     let nearest = Infinity;
-    for (const c of this.chunks.values())
+    for (const [i, c] of this.chunks) {
+      // A star still fading in, or already fading out, does not dim the view yet.
+      if (c.stars.length === 0 || starPresence(i, this.s, this.director.hasGiga(i)) < 0.3) continue;
       for (const s of c.stars) {
         const d = s.position.distanceTo(this.camera.position);
         if (d < nearest) {
@@ -534,6 +560,7 @@ export class InfiniteFlight {
           star = s;
         }
       }
+    }
     const neb = this.nebulaAt();
     return { throttle: 1, boost: this.boostLevel(), star, nebula: neb.density, nebulaColors: neb.colors };
   }
@@ -559,7 +586,12 @@ export class InfiniteFlight {
       : mega?.type === 'habitat' ? t('regionHabitat', { name: seg.name })
       : mega?.type === 'lattice' ? t('regionLattice', { name: seg.name })
       : t('regionDeep');
-    this.caption.textContent = text;
+    // A star's line under its name: its class, as a catalogue would give it.
+    const facts =
+      seg.kind === 'star' && star?.type === 'star'
+        ? t('starFacts', { kind: t(STAR_KIND[star.star.family]), type: star.star.spectral, temp: formatQuantity(star.star.teff), radius: formatQuantity(star.star.radius) })
+        : null;
+    this.caption.replaceChildren(text, ...(facts ? [h('span', { class: 'inf-caption-facts' }, facts)] : []));
     this.caption.classList.remove('show');
     void this.caption.offsetWidth;
     this.caption.classList.add('show');
@@ -569,6 +601,21 @@ export class InfiniteFlight {
 const WHITE = new THREE.Color(1, 1, 1);
 /** Top cruise speed through a stretch with a gigastructure, m/s. */
 const GIGA_CRUISE = 600;
+/** The key light before the first star: a warm white from somewhere off ahead. */
+const DEFAULT_KEY = { color: new THREE.Color(0xfff0dc), intensity: 2.6 };
+const STAR_KIND: Record<StarFamily, Key> = {
+  O: 'starO',
+  B: 'starB',
+  A: 'starA',
+  F: 'starF',
+  G: 'starG',
+  K: 'starK',
+  M: 'starM',
+  redGiant: 'starRedGiant',
+  redSupergiant: 'starRedSupergiant',
+  blueSupergiant: 'starBlueSupergiant',
+  whiteDwarf: 'starWhiteDwarf',
+};
 /** How long the pointer may rest before the button and cursor fade out. */
 const IDLE_MS = 2500;
 const ICON_CAMERA = '<path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z"/><circle cx="12" cy="13.5" r="3.2"/>';
