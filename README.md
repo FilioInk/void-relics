@@ -5,6 +5,8 @@ flight through a procedurally generated star system, hunting for twenty alien re
 world, its textures, the music and the sound are all generated at runtime from a single seed —
 the build contains no images (beyond the app icons, which a script draws) and no audio files.
 
+**▶ Play it in the browser: [filioink.github.io/void-relics](https://filioink.github.io/void-relics/)**
+
 ![Nebula and relic](docs/screenshots/nebula-relic.jpg)
 
 | | |
@@ -153,10 +155,10 @@ Needs Node 24 (`.nvmrc`) and a browser with WebGL 2.
 
 ## Publishing to GitHub Pages
 
-`.github/workflows/deploy.yml` builds and publishes the site on every push to `main`. On the
-free GitHub plan, Pages only serves public repositories, so while this repository is private the
-deploy is skipped. To switch it on: make the repository public and set Settings → Pages →
-Source to **GitHub Actions**.
+`.github/workflows/deploy.yml` builds and publishes the site on every push to `main`, and it is
+live at <https://filioink.github.io/void-relics/>. On the free GitHub plan, Pages only serves
+public repositories, so the deploy job skips itself if the repository is ever made private
+again.
 
 ## How it works
 
