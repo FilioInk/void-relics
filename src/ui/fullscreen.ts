@@ -1,5 +1,5 @@
 import { t } from '../text.ts';
-import { h } from './dom.ts';
+import { h, icon } from './dom.ts';
 
 /**
  * Full screen through the standard API, with Safari's prefixed one as a fallback. iPhone Safari
@@ -47,8 +47,6 @@ export async function toggleFullscreen(doc: FullscreenDoc): Promise<void> {
 
 const EXPAND = '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>';
 const COLLAPSE = '<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>';
-const icon = (path: string) =>
-  `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
 
 export type FullscreenButton = { el: HTMLButtonElement; dispose(): void };
 

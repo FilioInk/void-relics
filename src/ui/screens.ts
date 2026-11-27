@@ -1,4 +1,4 @@
-import { t } from '../text.ts';
+import { t, type Key } from '../text.ts';
 import type { Settings } from '../game/settings.ts';
 import { h } from './dom.ts';
 
@@ -15,7 +15,16 @@ export type ScreenHandlers = {
   onSettings(next: Settings): void;
 };
 
-export type ScreenState = { seed: number; found: number; settings: Settings; victoryTime: string; touchOnly: boolean };
+/** `touch`: a touch-first device, played with the on-screen controls. */
+export type ScreenState = { seed: number; found: number; settings: Settings; victoryTime: string; touch: boolean };
+
+const KEYBOARD_CONTROLS = ['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlFire', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause', 'ctlInfinite'] as const;
+const TOUCH_CONTROLS = ['ctlTouchStick', 'ctlTouchThrust', 'ctlTouchBrake', 'ctlTouchBoost', 'ctlTouchFire', 'ctlTouchBar', 'ctlTouchInfinite'] as const;
+
+/** The controls list in the settings and pause cards: the keys, or on a touch device the on-screen controls. */
+export function controlKeys(touch: boolean): readonly Key[] {
+  return touch ? TOUCH_CONTROLS : KEYBOARD_CONTROLS;
+}
 
 /** The main game's button: the hunt, with the score once it has started. */
 export function playLabel(found: number): string {
@@ -76,17 +85,12 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
       h('label', { text: t('music') }), toggle(s.music, () => change({ music: !s.music })),
       h('label', { text: t('musicVolume') }), vol,
       h('label', { text: t('sound') }), toggle(s.sound, () => change({ sound: !s.sound })),
-      h('label', { text: t('sensitivity') }), sens,
+      h('label', { text: t(state().touch ? 'sensitivityTouch' : 'sensitivity') }), sens,
       h('label', { text: t('invertY') }), toggle(s.invertY, () => change({ invertY: !s.invertY })),
     );
   };
 
-  const controls = () =>
-    h(
-      'ul',
-      { class: 'controls' },
-      ...(['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlFire', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause', 'ctlInfinite'] as const).map((k) => h('li', { text: t(k) })),
-    );
+  const controls = () => h('ul', { class: 'controls' }, ...controlKeys(state().touch).map((k) => h('li', { text: t(k) })));
 
   const build = (name: ScreenName): HTMLElement | null => {
     const st = state();
@@ -133,7 +137,6 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
               h('button', { class: 'btn ghost', text: t('infinite'), onclick: () => handlers.onInfinite() }),
             ),
             h('button', { class: 'menu-link', text: t('settings'), onclick: () => openMenuView('settings') }),
-            st.touchOnly ? h('div', { class: 'notice', text: t('needsMouse') }) : null,
           ),
         );
       case 'pause':
@@ -144,7 +147,7 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
             'div',
             { class: 'card' },
             h('h2', { text: t('paused') }),
-            h('div', { class: 'buttons' }, h('button', { class: 'btn', text: t('clickToResume'), onclick: () => handlers.onResume() })),
+            h('div', { class: 'buttons' }, h('button', { class: 'btn', text: t(st.touch ? 'tapToResume' : 'clickToResume'), onclick: () => handlers.onResume() })),
             h('div', { class: 'section-title', text: t('controlsTitle') }),
             controls(),
             settingsPanel(),

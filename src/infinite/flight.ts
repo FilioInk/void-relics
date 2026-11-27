@@ -7,7 +7,7 @@ import { createCombatFx, type CombatFx } from '../render/combat.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { GUN_MOUNTS, createShip, type ShipView } from '../render/ship.ts';
 import { t } from '../text.ts';
-import { h } from '../ui/dom.ts';
+import { h, icon } from '../ui/dom.ts';
 import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
 import { Director, SEGMENT, cruiseSpeed, distance, wantedSegments, type Segment } from './director.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
@@ -86,7 +86,8 @@ export class InfiniteFlight {
   private readonly scratch: Target[] = [];
 
   // Overlay: the flight, the name of each new place as it fades in (H hides them), and the
-  // full-screen button, which fades out with the cursor while the pointer rests.
+  // full-screen button, which fades out with the cursor while the pointer rests. On a touch
+  // device a camera button joins it and a back button sits top-left: a tap brings them all back.
   private readonly caption: HTMLElement;
   private readonly fullscreen: FullscreenButton;
   private namesOn = true;
@@ -107,7 +108,7 @@ export class InfiniteFlight {
   private readonly quat = new THREE.Quaternion();
   private readonly velocity = new THREE.Vector3();
 
-  constructor(opts: { renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; envMap: THREE.CubeTexture; stars: THREE.Points; seed: number; sounds: () => FlightSounds | null }) {
+  constructor(opts: { renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; envMap: THREE.CubeTexture; stars: THREE.Points; seed: number; sounds: () => FlightSounds | null; onBack: () => void }) {
     this.renderer = opts.renderer;
     this.camera = opts.camera;
     this.sounds = opts.sounds;
@@ -134,8 +135,15 @@ export class InfiniteFlight {
     this.scene.add(this.fx.group);
 
     this.caption = h('div', { class: 'inf-caption' });
-    this.fullscreen = createFullscreenButton('inf-fs');
-    this.overlay = h('div', { class: 'inf' }, this.caption, this.fullscreen.el);
+    this.fullscreen = createFullscreenButton('inf-btn inf-fs');
+    const touchButton = (cls: string, label: string, path: string, onclick: () => void) => {
+      const b = h('button', { class: `inf-btn inf-touch ${cls}`, type: 'button', title: label, 'aria-label': label, onclick });
+      b.innerHTML = icon(path);
+      return b;
+    };
+    const camera = touchButton('inf-cam', t('infCamera'), ICON_CAMERA, () => this.nextCamera());
+    const back = touchButton('inf-back', t('infBack'), ICON_BACK, () => opts.onBack());
+    this.overlay = h('div', { class: 'inf' }, this.caption, back, h('div', { class: 'inf-tools' }, camera, this.fullscreen.el));
   }
 
   /** Builds the first stretches at once and compiles their shaders, so the flight starts smooth. */
@@ -520,5 +528,7 @@ export class InfiniteFlight {
 const WHITE = new THREE.Color(1, 1, 1);
 /** How long the pointer may rest before the button and cursor fade out. */
 const IDLE_MS = 2500;
+const ICON_CAMERA = '<path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z"/><circle cx="12" cy="13.5" r="3.2"/>';
+const ICON_BACK = '<path d="M14.5 5.5 8 12l6.5 6.5"/>';
 const ROCK_SPARK = new THREE.Color(2.4, 1.3, 0.6);
 const ROCK_DEBRIS = new THREE.Color(0.55, 0.5, 0.45);

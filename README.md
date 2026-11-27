@@ -1,9 +1,9 @@
 # Void Relics
 
-A browser space-flight game on three.js: free mouse-steered flight through a procedurally
-generated star system, hunting for twenty alien relics. The world, its textures, the music and
-the sound are all generated at runtime from a single seed — the build contains no images and no
-audio files.
+A browser space-flight game on three.js: free mouse-steered (or, on a phone, thumb-steered)
+flight through a procedurally generated star system, hunting for twenty alien relics. The
+world, its textures, the music and the sound are all generated at runtime from a single seed —
+the build contains no images and no audio files.
 
 ![Nebula and relic](docs/screenshots/nebula-relic.jpg)
 
@@ -46,6 +46,13 @@ audio files.
 | M (or Tab) | System map |
 | Esc | Pause |
 
+**On a phone or tablet** the game shows touch controls instead. Drag anywhere on the left half
+of the screen to steer: a stick appears under the thumb. On the right, around the thumb, are
+**Thrust** (hold it, or tap it once to keep flying and tap again to stop), **Brake**, **Boost**
+and **Fire**; the system map and pause are in the top-right corner. Steering, thrust and fire
+work at the same time. Portrait and landscape both work. In infinite flight, a tap brings up
+the camera, full-screen and back buttons.
+
 A relic shows from far away as a faint pulsing point of light, and the scanner picks up its
 signal within ~6.5 km (half that inside a nebula). On the map, every missing relic is drawn as a
 circle it lies somewhere inside. Progress is saved in the browser.
@@ -72,7 +79,8 @@ and then. The camera cuts between a chase view, a slow orbit, fly-bys, a wide sh
 cockpit. The only things on screen are the name of each new place as it fades in and a small
 button in the bottom-right corner (or **F**) that goes full screen; the button and the cursor
 fade out while the mouse rests. **C** changes the camera, **H** hides the place names, **Esc**
-goes back to the menu. The journey is fixed by the galaxy seed.
+goes back to the menu; on a touch screen, buttons do the camera and the way back. The journey
+is fixed by the galaxy seed.
 
 ## Run it
 
