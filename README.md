@@ -48,10 +48,11 @@ the build contains no images (beyond the app icons, which a script draws) and no
 
 **On a phone or tablet** the game shows touch controls instead. Drag anywhere on the left half
 of the screen to steer: a stick appears under the thumb. On the right, around the thumb, are
-**Thrust** (hold it, or tap it once to keep flying and tap again to stop), **Brake**, **Boost**
-and **Fire**; the system map and pause are in the top-right corner (pause also leads to the main
-menu). Steering, thrust and fire work at the same time. Portrait and landscape both work. In
-infinite flight, a tap brings up the camera, music, full-screen and back buttons.
+**Thrust** (hold it, or tap it once to keep flying; press it again to brake, and hold it to
+reverse), **Boost** and **Fire**; the system map and pause are in the top-right corner (pause
+also leads to the main menu). Steering, thrust and fire work at the same time. Portrait and
+landscape both work. In infinite flight, a tap brings up the camera, music, full-screen and back
+buttons.
 
 A relic shows from far away as a faint pulsing point of light, and the scanner picks up its
 signal within ~6.5 km (half that inside a nebula). On the map, every missing relic is drawn as a
@@ -82,6 +83,17 @@ the same setting as Music in the menu) and full screen (or **F**). The buttons a
 fade out while the mouse rests. **C** changes the camera, **H** hides the place names, **Esc**
 goes back to the menu; on a touch screen, buttons do the camera and the way back. The journey
 is fixed by the galaxy seed.
+
+**Every star is a real kind of star.** Each one is drawn as a class — a main-sequence O, B, A,
+F, G, K or M star, a red giant, a red supergiant, a blue supergiant or a white dwarf — and gets
+its temperature and radius from published values for that class (Mamajek's dwarf sequence,
+Levesque et al. 2005 for red supergiants), with the luminosity from the Stefan–Boltzmann law.
+The temperature sets its colour (Planck's law through the CIE 1931 observer), its brightness,
+its corona and the colour of the light it throws on the ship and planets; the radius sets its
+size, squeezed so that a white dwarf is a dazzling few hundred metres and a red supergiant a
+wall of fire tens of kilometres across, seen from well over a hundred. A star's name comes with
+a line of its facts: "Red supergiant · M3 I · 3,580 K · 401 solar radii". Stars fade in and out
+as their stretch of the path is loaded and dropped.
 
 **Full screen keeps the screen on.** While the game is full screen, or opened as the installed
 app, it holds a screen wake lock, so a phone left to infinite flight does not dim and lock.

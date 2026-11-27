@@ -116,6 +116,7 @@ html, body {
 .inf-caption.show { animation: inf-caption 7s ease forwards; }
 @keyframes inf-caption { 0% { opacity: 0; letter-spacing: 0.55em; } 15% { opacity: 0.9; } 70% { opacity: 0.9; } 100% { opacity: 0; letter-spacing: 0.4em; } }
 .inf.quiet .inf-caption { display: none; }
+.inf-caption-facts { display: block; margin-top: 0.9em; font-size: 0.5em; letter-spacing: 0.28em; opacity: 0.75; }
 #ui .inf-tools { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 10px; }
 #ui .inf-btn { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; color: var(--ink); background: rgba(6, 10, 20, 0.45); border: 1px solid var(--faint); border-radius: 6px; cursor: pointer; opacity: 0.7; pointer-events: auto; transition: opacity 0.2s, border-color 0.2s, color 0.2s; }
 #ui .inf-btn:hover, #ui .inf-btn:focus-visible { opacity: 1; color: var(--accent); border-color: var(--accent); outline: none; }
@@ -204,9 +205,10 @@ body.touch .overlay { touch-action: pan-x pan-y; }
 .t-fire { --c: 255, 122, 100; width: 88px; height: 88px; right: 22px; bottom: calc(22px + var(--lift) + var(--low)); font-size: 12px; }
 .t-thrust { width: 64px; height: 64px; right: 130px; bottom: calc(18px + var(--lift) + var(--low)); }
 .t-boost { --c: var(--boost); width: 56px; height: 56px; right: 24px; bottom: calc(134px + var(--lift) + var(--low)); }
-.t-brake { --c: 255, 181, 71; width: 52px; height: 52px; right: 102px; bottom: calc(110px + var(--lift) + var(--low)); }
 /* Latched by a tap: the engine keeps burning with no thumb on it. */
 .t-thrust.latched::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 1px dashed rgba(var(--c), 0.75); }
+/* THRUST pressed again brakes: it turns amber and reads BRAKE while held. */
+.t-thrust.braking { --c: 255, 181, 71; }
 .t-bar { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
 .t-top { width: 44px; height: 44px; padding: 0; display: grid; place-items: center; color: var(--ink); background: rgba(6, 10, 20, 0.45); border: 1px solid var(--faint); border-radius: 8px; }
 .t-top:active { color: var(--accent); border-color: var(--accent); }

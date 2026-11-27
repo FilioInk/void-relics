@@ -156,23 +156,58 @@ test('thrust held burns only while held', () => {
   assert.ok(!l.on(false));
 });
 
-test('a tap on thrust latches it on; the next press lets it go', () => {
+test('a tap on thrust latches it on; the next press lets it go and brakes while held', () => {
   const l = new ThrustLatch();
   l.down(1000);
   l.up(1000 + TAP_MS - 50);
   assert.ok(l.latched);
   assert.ok(l.on(false));
-  // Held again: still burning while held, off once it lifts — tap or hold alike.
+  assert.ok(!l.brake(false));
+  // Pressed again: the engine stops at once and the ship brakes while the finger stays down.
   l.down(5000);
-  assert.ok(l.on(true));
-  l.up(5100);
   assert.ok(!l.latched);
-  l.down(6000);
-  l.up(6000 + TAP_MS * 4);
+  assert.ok(!l.on(true));
+  assert.ok(l.brake(true));
+  // Let go: neither thrust nor brake, and a long hold did not latch anything.
+  l.up(5000 + TAP_MS * 4);
+  assert.ok(!l.latched && !l.braking);
+  assert.ok(!l.on(false) && !l.brake(false));
+});
+
+test('a quick second tap stops the latch; the press after that is thrust again', () => {
+  const l = new ThrustLatch();
+  l.down(0);
+  l.up(50);
+  l.down(400);
+  l.up(450);
+  assert.ok(!l.latched && !l.braking);
+  l.down(1000);
+  assert.ok(l.on(true) && !l.brake(true));
+  l.up(1000 + TAP_MS + 100);
   assert.ok(!l.latched);
 });
 
-test('brake or a pause drops the latch', () => {
+test('from a standstill, a tap and then a hold brakes', () => {
+  const l = new ThrustLatch();
+  l.down(0);
+  l.up(80);
+  l.down(200);
+  assert.ok(l.brake(true));
+  assert.ok(!l.on(true));
+});
+
+test('a second finger on thrust while braking keeps braking', () => {
+  const l = new ThrustLatch();
+  l.down(0);
+  l.up(50);
+  l.down(1000);
+  l.down(1100);
+  assert.ok(l.brake(true));
+  l.up(3000);
+  assert.ok(!l.braking && !l.latched);
+});
+
+test('a pause drops the latch and the brake', () => {
   const l = new ThrustLatch();
   l.down(0);
   l.up(50);
@@ -184,4 +219,11 @@ test('brake or a pause drops the latch', () => {
   l.cancel();
   l.up(120);
   assert.ok(!l.latched);
+  // Nor does a brake survive one.
+  l.down(200);
+  l.up(220);
+  l.down(300);
+  assert.ok(l.braking);
+  l.cancel();
+  assert.ok(!l.brake(true) && !l.on(false));
 });

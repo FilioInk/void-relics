@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORRIDOR, Director, Path, SEGMENT, cruiseSpeed, distance, fieldRocks, wantedSegments, type Thing } from './director.ts';
+import { CORRIDOR, Director, Path, SEGMENT, STAR_FADE, cruiseSpeed, distance, fieldRocks, starPresence, wantedSegments, type Thing } from './director.ts';
+import { gameRadius, type StarFamily } from '../world/stars.ts';
 
 const N = 60;
 
@@ -114,4 +115,47 @@ test('the autopilot slows for fields and ruins and opens up in empty space', () 
   assert.ok(cruiseSpeed('field') < cruiseSpeed('nebula'));
   assert.ok(cruiseSpeed('ruins') < cruiseSpeed('planet'));
   assert.ok(cruiseSpeed('drift') > cruiseSpeed('star'));
+});
+
+test('stars come in every class, sized and lit by their class', () => {
+  const families = new Set<StarFamily>();
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const d = new Director(seed);
+    for (let i = 0; i < 200; i++) {
+      const seg = d.segment(i);
+      for (const thing of seg.things) {
+        if (thing.type !== 'star') continue;
+        families.add(thing.star.family);
+        assert.equal(thing.radius, gameRadius(thing.star));
+        // Lit by the star it shows: the segment's light comes from the star itself.
+        assert.equal(seg.lightStar, thing.star);
+        assert.deepEqual(seg.light, thing.position);
+        const off = d.path.clearance(thing.position, i * SEGMENT, (i + 1) * SEGMENT, 100);
+        assert.ok(off > thing.radius * 2.6, `segment ${i}: a ${thing.star.family} of ${thing.radius.toFixed(0)} m passed at ${off.toFixed(0)} m`);
+      }
+    }
+  }
+  assert.equal(families.size, 11, `seen: ${[...families].join(', ')}`);
+});
+
+test('the same seed draws the same stars', () => {
+  const stars = (seed: number) =>
+    Array.from({ length: 80 }, (_, i) => new Director(seed).segment(i).things.find((t) => t.type === 'star'))
+      .filter((t) => t !== undefined)
+      .map((t) => (t.type === 'star' ? t.star : null));
+  assert.deepEqual(stars(21), stars(21));
+});
+
+test('a star fades in after its segment loads and out before it is freed', () => {
+  const i = 10;
+  const load = (i - 3) * SEGMENT;
+  const free = (i + 2) * SEGMENT;
+  assert.equal(starPresence(i, load), 0);
+  assert.ok(starPresence(i, load + STAR_FADE / 2) > 0.2 && starPresence(i, load + STAR_FADE / 2) < 0.8);
+  for (let s = load + STAR_FADE + 300; s < free - STAR_FADE; s += 500) assert.equal(starPresence(i, s), 1);
+  assert.equal(starPresence(i, free - 100), 0);
+  assert.equal(starPresence(i, Number.NaN), 1);
+  // Loaded exactly over that stretch.
+  assert.ok(wantedSegments(load).includes(i) && !wantedSegments(load - 1).includes(i));
+  assert.ok(wantedSegments(free - 1).includes(i) && !wantedSegments(free).includes(i));
 });

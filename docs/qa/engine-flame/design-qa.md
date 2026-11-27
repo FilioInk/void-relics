@@ -25,6 +25,6 @@ What changed and what to look for:
 - **Nozzle throat.** The disc inside the bell glowed pale blue; now warm orange-white, so from
   the chase camera the engines read as two warm-white discs with an orange halo.
 - **BOOST.** The HUD tag and the touch BOOST button were pink; both now wear the flame's
-  orange (`--boost` in `style.css`). On the touch pad it sits between the amber BRAKE and the
-  red-orange FIRE and still reads apart from both.
+  orange (`--boost` in `style.css`). On the touch pad it sits above the red-orange FIRE and
+  still reads apart from it.
 - **Unchanged.** The bell rim (already dull red heating to white), flame length and shape.
