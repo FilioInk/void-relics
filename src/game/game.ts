@@ -344,6 +344,8 @@ export class Game {
     if (document.pointerLockElement) document.exitPointerLock();
     this.infinite = new InfiniteFlight({ renderer: this.renderer, camera: this.camera, envMap: this.sky.background, stars: this.sky.stars, seed: this.seed, sounds: () => this.audio });
     this.ui.append(this.infinite.overlay);
+    // The ?perf=1 readout stays out of the picture here; __vr.perf() still reads it.
+    if (this.perfOverlay) this.perfOverlay.el.hidden = true;
     this.infinite.start();
     this.renderPass.scene = this.infinite.scene;
     this.state = 'infinite';
@@ -353,6 +355,7 @@ export class Game {
     if (!this.infinite) return;
     this.infinite.dispose();
     this.infinite = null;
+    if (this.perfOverlay) this.perfOverlay.el.hidden = false;
     this.renderPass.scene = this.scene;
     this.audio?.updateShip(0, 0, false);
     this.camera.up.set(0, 1, 0);
@@ -438,6 +441,7 @@ export class Game {
         if (e.code === 'Escape') this.exitInfinite();
         else if (e.code === 'KeyC') this.infinite?.nextCamera();
         else if (e.code === 'KeyH') this.infinite?.toggleHints();
+        else if (e.code === 'KeyF') this.infinite?.toggleFullscreen();
         return;
       }
       this.keys.add(e.code);

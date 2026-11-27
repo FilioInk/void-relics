@@ -8,6 +8,7 @@ import { createDust, type DustView } from '../render/dust.ts';
 import { GUN_MOUNTS, createShip, type ShipView } from '../render/ship.ts';
 import { t } from '../text.ts';
 import { h } from '../ui/dom.ts';
+import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
 import { Director, SEGMENT, cruiseSpeed, distance, wantedSegments, type Segment } from './director.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
@@ -84,10 +85,23 @@ export class InfiniteFlight {
   private pause = 3;
   private readonly scratch: Target[] = [];
 
-  // Overlay.
+  // Overlay: nothing on screen but the flight. Place names and the key hint wait behind H; the
+  // full-screen button and the cursor fade out while the pointer rests.
   private readonly caption: HTMLElement;
   private readonly hint: HTMLElement;
-  private hintsOn = true;
+  private readonly fullscreen: FullscreenButton;
+  private hintsOn = false;
+  private hintTimer = 0;
+  private idleTimer = 0;
+  private readonly wake = (): void => {
+    this.overlay.classList.remove('idle');
+    document.body.classList.remove('cursor-idle');
+    window.clearTimeout(this.idleTimer);
+    this.idleTimer = window.setTimeout(() => {
+      this.overlay.classList.add('idle');
+      document.body.classList.add('cursor-idle');
+    }, IDLE_MS);
+  };
 
   // Pose, absolute coordinates.
   private readonly pos = new THREE.Vector3();
@@ -123,7 +137,8 @@ export class InfiniteFlight {
 
     this.caption = h('div', { class: 'inf-caption' });
     this.hint = h('div', { class: 'inf-hint', text: t('infiniteHint') });
-    this.overlay = h('div', { class: 'inf passive' }, this.caption, this.hint);
+    this.fullscreen = createFullscreenButton('inf-fs');
+    this.overlay = h('div', { class: 'inf quiet' }, this.caption, this.hint, this.fullscreen.el);
   }
 
   /** Builds the first stretches at once and compiles their shaders, so the flight starts smooth. */
@@ -132,7 +147,9 @@ export class InfiniteFlight {
     this.pose(0);
     this.placeCamera(0, true);
     this.renderer.compile(this.scene, this.camera);
-    window.setTimeout(() => this.hint.classList.add('fade'), 7000);
+    window.addEventListener('pointermove', this.wake);
+    window.addEventListener('pointerdown', this.wake);
+    this.wake();
   }
 
   nextCamera(): void {
@@ -142,14 +159,29 @@ export class InfiniteFlight {
     this.setMode(CAMERA_ORDER[this.modeIndex]!);
   }
 
+  /** H: place names and the key hint, off by default. The hint fades again after a while. */
   toggleHints(): void {
     this.hintsOn = !this.hintsOn;
     this.overlay.classList.toggle('quiet', !this.hintsOn);
+    window.clearTimeout(this.hintTimer);
+    this.hint.classList.remove('fade');
+    if (this.hintsOn) this.hintTimer = window.setTimeout(() => this.hint.classList.add('fade'), 7000);
+  }
+
+  /** F, from a key press: the browser allows full screen only from a user gesture. */
+  toggleFullscreen(): void {
+    void toggleFullscreen(document);
   }
 
   dispose(): void {
     for (const c of this.chunks.values()) disposeChunk(c, this.scene);
     this.chunks.clear();
+    window.removeEventListener('pointermove', this.wake);
+    window.removeEventListener('pointerdown', this.wake);
+    window.clearTimeout(this.idleTimer);
+    window.clearTimeout(this.hintTimer);
+    document.body.classList.remove('cursor-idle');
+    this.fullscreen.dispose();
     this.overlay.remove();
   }
 
@@ -493,5 +525,7 @@ export class InfiniteFlight {
 }
 
 const WHITE = new THREE.Color(1, 1, 1);
+/** How long the pointer may rest before the button and cursor fade out. */
+const IDLE_MS = 2500;
 const ROCK_SPARK = new THREE.Color(2.4, 1.3, 0.6);
 const ROCK_DEBRIS = new THREE.Color(0.55, 0.5, 0.45);
