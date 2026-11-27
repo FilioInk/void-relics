@@ -11,20 +11,18 @@ import { h, icon } from '../ui/dom.ts';
 import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
 import { starLook, type Star } from '../world/stars.ts';
 import { Director, SEGMENT, cruiseSpeed, distance, isGiga, isMega, starPresence, wantedSegments, type Segment } from './director.ts';
+import { CAMERA_ORDER, CHOSEN_HOLD, FIRST_HOLD, autoHold, nextCameraIndex, type CameraMode } from './cameras.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
 /**
  * Infinite flight: the ship flies itself down an endless path while the director lays out
  * fields, nebulae, planets, stars, ruins, mega- and gigastructures ahead of it. The camera
- * cuts between a few cinematic angles, and in asteroid fields the autopilot picks off rocks now
- * and then.
+ * cuts between a few angles that all ride with the ship (`cameras.ts`), and in asteroid fields
+ * the autopilot picks off rocks now and then.
  *
  * The flight itself is simulated in absolute coordinates (plain JS doubles); the scene is drawn
  * relative to an origin that jumps forward every so often, so the GPU never sees huge numbers.
  */
-
-export type CameraMode = 'chase' | 'orbit' | 'flyby' | 'wide' | 'cockpit';
-const CAMERA_ORDER: CameraMode[] = ['chase', 'orbit', 'flyby', 'chase', 'wide', 'cockpit'];
 
 /** What the game needs back each frame: engine, music mood, exposure and screen tint. */
 export type FlightFrame = {
@@ -71,9 +69,8 @@ export class InfiniteFlight {
   private bank = 0;
   private mode: CameraMode = 'chase';
   private modeIndex = 0;
-  private modeTimer = 22;
+  private modeTimer = FIRST_HOLD;
   private readonly camQuat = new THREE.Quaternion();
-  private readonly flybyAt = new THREE.Vector3();
   private orbitAngle = 0;
   private segmentShown = -1;
   private lastShot = -100;
@@ -192,8 +189,8 @@ export class InfiniteFlight {
 
   nextCamera(): void {
     // A chosen camera stays a while before the autopilot cuts again.
-    this.modeTimer = 45;
-    this.modeIndex = (this.modeIndex + 1) % CAMERA_ORDER.length;
+    this.modeTimer = CHOSEN_HOLD;
+    this.modeIndex = nextCameraIndex(this.modeIndex);
     this.setMode(CAMERA_ORDER[this.modeIndex]!);
   }
 
@@ -318,7 +315,6 @@ export class InfiniteFlight {
     const shift = this.pos.clone().sub(this.origin);
     this.origin.add(shift);
     for (const c of this.chunks.values()) rebaseChunk(c, shift);
-    this.flybyAt.sub(shift);
   }
 
   // --- autopilot guns ----------------------------------------------------------------------
@@ -403,29 +399,16 @@ export class InfiniteFlight {
 
   private setMode(mode: CameraMode): void {
     this.mode = mode;
-    if (mode === 'flyby') this.placeFlyby();
     if (mode === 'orbit') this.orbitAngle = Math.random() * Math.PI * 2;
     this.placeCamera(0, true);
-  }
-
-  /** A spot ahead on the path and off to one side, for the ship to sweep past. */
-  private placeFlyby(): void {
-    const path = this.director.path;
-    const f = path.frame(this.s + Math.max(250, this.speed * 1.6));
-    const side = Math.random() < 0.5 ? -1 : 1;
-    this.flybyAt.set(
-      f.position[0] + f.right[0] * 28 * side + f.up[0] * 9 - this.origin.x,
-      f.position[1] + f.right[1] * 28 * side + f.up[1] * 9 - this.origin.y,
-      f.position[2] + f.right[2] * 28 * side + f.up[2] * 9 - this.origin.z,
-    );
   }
 
   private placeCamera(dt: number, snap: boolean): void {
     this.modeTimer -= dt;
     if (this.modeTimer <= 0) {
       // The timer first: setMode places the camera through here again.
-      this.modeTimer = 18 + Math.random() * 14;
-      this.modeIndex = (this.modeIndex + 1) % CAMERA_ORDER.length;
+      this.modeTimer = autoHold(Math.random());
+      this.modeIndex = nextCameraIndex(this.modeIndex);
       this.setMode(CAMERA_ORDER[this.modeIndex]!);
       return;
     }
@@ -455,16 +438,6 @@ export class InfiniteFlight {
         cam.up.set(0, 1, 0);
         cam.lookAt(shipAt);
         fov = 60;
-        break;
-      }
-      case 'flyby': {
-        // Once the ship is well past, find the next spot ahead.
-        const behind = shipAt.clone().sub(this.flybyAt).dot(this.fwd);
-        if (behind > 260) this.placeFlyby();
-        cam.position.copy(this.flybyAt);
-        cam.up.set(0, 1, 0);
-        cam.lookAt(shipAt);
-        fov = 50;
         break;
       }
       case 'cockpit': {
