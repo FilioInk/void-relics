@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { AudioEngine } from '../audio/engine.ts';
 import { InfiniteFlight } from '../infinite/flight.ts';
+import { createInstallOffer } from '../ui/install.ts';
 import { t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
 import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
@@ -193,12 +194,18 @@ export class Game {
       this.screens.refresh();
     });
 
+    // "Install app" in the menu; it leaves the menu once the browser says the app is installed.
+    const install = createInstallOffer();
+    install.subscribe(() => this.screens.refresh());
+
     this.screens = createScreens(
       {
+        onInstall: () => install.install(),
         onLaunch: () => this.launch(),
         onNewGalaxy: () => this.newGalaxy(),
         onInfinite: () => this.startInfinite(),
         onResume: () => this.resume(),
+        onMenu: () => this.toMenu(),
         onKeepFlying: () => this.resume(),
         onSettings: (next) => this.applySettings(next),
       },
@@ -208,6 +215,7 @@ export class Game {
         settings: this.settings,
         victoryTime: formatTime(this.progress?.finishedAt ?? this.progress?.elapsed ?? 0),
         touch: this.touchMode,
+        installable: install.visible(),
       }),
     );
     this.ui.append(this.screens.el);
@@ -357,7 +365,17 @@ export class Game {
     this.hud.show(false);
     this.map.el.hidden = true;
     if (document.pointerLockElement) document.exitPointerLock();
-    this.infinite = new InfiniteFlight({ renderer: this.renderer, camera: this.camera, envMap: this.sky.background, stars: this.sky.stars, seed: this.seed, sounds: () => this.audio, onBack: () => this.exitInfinite() });
+    this.infinite = new InfiniteFlight({
+      renderer: this.renderer,
+      camera: this.camera,
+      envMap: this.sky.background,
+      stars: this.sky.stars,
+      seed: this.seed,
+      sounds: () => this.audio,
+      onBack: () => this.exitInfinite(),
+      music: this.settings.music,
+      onMusic: () => this.toggleMusic(),
+    });
     this.ui.append(this.infinite.overlay);
     // The ?perf=1 readout stays out of the picture here; __vr.perf() still reads it.
     if (this.perfOverlay) this.perfOverlay.el.hidden = true;
@@ -397,6 +415,25 @@ export class Game {
     this.save();
   }
 
+  /**
+   * The pause card's way back to the start menu. The hunt stays as it is: progress is saved, the
+   * ship waits where it stopped, and Collect relics carries on from there.
+   */
+  private toMenu(): void {
+    if (this.state !== 'paused') return;
+    this.save();
+    this.audio?.click();
+    this.audio?.updateShip(0, 0, false);
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.keys.clear();
+    this.firing = false;
+    this.touch.reset();
+    this.hud.show(false);
+    this.map.el.hidden = true;
+    this.state = 'menu';
+    this.screens.show('menu');
+  }
+
   private newGalaxy(): void {
     const seed = Math.floor(Math.random() * 1e9);
     const url = new URL(window.location.href);
@@ -410,7 +447,13 @@ export class Game {
     this.audio?.setMusic(next.music);
     this.audio?.setMusicVolume(next.musicVolume);
     this.audio?.setSound(next.sound);
+    this.infinite?.setMusic(next.music);
     this.screens.refresh();
+  }
+
+  /** The music button and M in infinite flight: the same setting as the menu's toggle, saved. */
+  private toggleMusic(): void {
+    this.applySettings({ ...this.settings, music: !this.settings.music });
   }
 
   private save(): void {
@@ -463,6 +506,7 @@ export class Game {
         if (e.repeat) return;
         if (e.code === 'Escape') this.exitInfinite();
         else if (e.code === 'KeyC') this.infinite?.nextCamera();
+        else if (e.code === 'KeyM') this.toggleMusic();
         else if (e.code === 'KeyH') this.infinite?.toggleNames();
         else if (e.code === 'KeyF') this.infinite?.toggleFullscreen();
         return;
