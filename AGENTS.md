@@ -64,7 +64,9 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
   wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
   `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
-  `names.ts` (generated names).
+  `names.ts` (generated names), `stars.ts` (star classes from reference tables: the class,
+  temperature, radius and luminosity of each infinite-flight star, its colour from a black body,
+  and how it is drawn — size, palette, brightness, corona, the light it casts).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
   heat, collisions, hull), `progress.ts` (relics found, salvage, broken targets, saves),
   `weapons.ts` (rate of fire, heat; the muzzles come from `ship.ts`), `targets.ts` (what bolts hit, how many hits
@@ -112,6 +114,12 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   A new shader that reads world positions must go through `modelMatrix`/`modelViewMatrix`
   (the nebula once used `viewMatrix` directly and could not be moved), and a builder that
   bakes world positions into uniforms has to register them in the chunk's `vectors`.
+- **A star's numbers come from references; its look is tuned.** `src/world/stars.ts` keeps
+  the physical values (Mamajek's table, Levesque's scale, the published ranges) apart from
+  `starLook()`, which squeezes radii (R^0.4), deepens the pale black-body colours and caps the
+  surface brightness so the tone mapping does not turn every hot star white. Change the look
+  there, not the tables. The relic hunt's star still uses its old hand-tuned palette
+  (`createSun` without a look).
 - **One light per star would recompile everything.** Three.js rebuilds every material's
   shader when the number of lights changes, so infinite flight drops each star's PointLight
   and moves a single DirectionalLight instead.

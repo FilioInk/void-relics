@@ -114,6 +114,7 @@ html, body {
 .inf-caption.show { animation: inf-caption 7s ease forwards; }
 @keyframes inf-caption { 0% { opacity: 0; letter-spacing: 0.55em; } 15% { opacity: 0.9; } 70% { opacity: 0.9; } 100% { opacity: 0; letter-spacing: 0.4em; } }
 .inf.quiet .inf-caption { display: none; }
+.inf-caption-facts { display: block; margin-top: 0.9em; font-size: 0.5em; letter-spacing: 0.28em; opacity: 0.75; }
 #ui .inf-tools { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 10px; }
 #ui .inf-btn { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; color: var(--ink); background: rgba(6, 10, 20, 0.45); border: 1px solid var(--faint); border-radius: 6px; cursor: pointer; opacity: 0.7; pointer-events: auto; transition: opacity 0.2s, border-color 0.2s, color 0.2s; }
 #ui .inf-btn:hover, #ui .inf-btn:focus-visible { opacity: 1; color: var(--accent); border-color: var(--accent); outline: none; }
