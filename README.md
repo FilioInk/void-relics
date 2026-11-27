@@ -174,6 +174,8 @@ Source to **GitHub Actions**.
 - `src/audio/engine.ts` — generative ambient on Web Audio: slow chords in drifting modes, FM
   bells with echo, a drone, cosmic wind, a tension layer near the star; plus impact, scanner
   ping, pickup and explosion sounds. Music plays at 90% by default (Music volume under Settings in the menu).
+  Browsers allow sound only after the player does something, so the music starts on the title
+  screen with the first click, tap or key press.
 - `src/audio/rocketVoice.ts` — the rocket engine: no tone, only noise — a brown-noise rumble,
   a pink-noise roar, exhaust crackle, combustion flutter and soft saturation, plus a whump on
   ignition and boost and a chuff on cut-off.
