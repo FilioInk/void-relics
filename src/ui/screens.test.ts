@@ -26,6 +26,11 @@ test('both control lists tell how to switch the music in infinite flight', () =>
   assert.match(t('ctlTouchInfinite'), /music/);
 });
 
+test('both control lists tell that a drag looks around the ship in infinite flight', () => {
+  assert.match(t('ctlInfinite'), /drag — look around/);
+  assert.match(t('ctlTouchInfinite'), /drag to look around/);
+});
+
 test('every browser without an install dialog gets at least one step', () => {
   assert.match(installSteps('ios').map((k) => t(k)).join(' '), /Share.*Add to Home Screen/);
   assert.match(installSteps('mac-safari').map((k) => t(k)).join(' '), /Add to Dock/);

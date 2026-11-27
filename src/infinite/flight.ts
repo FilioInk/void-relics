@@ -11,20 +11,19 @@ import { h, icon } from '../ui/dom.ts';
 import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
 import { starLook, type Star } from '../world/stars.ts';
 import { Director, SEGMENT, cruiseSpeed, distance, isGiga, isMega, starPresence, wantedSegments, type Segment } from './director.ts';
+import { AFTER_LOOK, CAMERA_ORDER, CHOSEN_HOLD, FIRST_HOLD, autoHold, nextCameraIndex, type CameraMode } from './cameras.ts';
+import { createLook, dragLook, grabLook, lookBusy, releaseLook, resetLook, stepLook } from './freeLook.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
 /**
  * Infinite flight: the ship flies itself down an endless path while the director lays out
  * fields, nebulae, planets, stars, ruins, mega- and gigastructures ahead of it. The camera
- * cuts between a few cinematic angles, and in asteroid fields the autopilot picks off rocks now
- * and then.
+ * cuts between a few angles that all ride with the ship (`cameras.ts`), and in asteroid fields
+ * the autopilot picks off rocks now and then.
  *
  * The flight itself is simulated in absolute coordinates (plain JS doubles); the scene is drawn
  * relative to an origin that jumps forward every so often, so the GPU never sees huge numbers.
  */
-
-export type CameraMode = 'chase' | 'orbit' | 'flyby' | 'wide' | 'cockpit';
-const CAMERA_ORDER: CameraMode[] = ['chase', 'orbit', 'flyby', 'chase', 'wide', 'cockpit'];
 
 /** What the game needs back each frame: engine, music mood, exposure and screen tint. */
 export type FlightFrame = {
@@ -71,9 +70,43 @@ export class InfiniteFlight {
   private bank = 0;
   private mode: CameraMode = 'chase';
   private modeIndex = 0;
-  private modeTimer = 22;
+  private modeTimer = FIRST_HOLD;
   private readonly camQuat = new THREE.Quaternion();
-  private readonly flybyAt = new THREE.Vector3();
+  // Free look: a drag on the picture, with the mouse or one finger, swings the camera.
+  private readonly look = createLook();
+  private lookPointer: number | null = null;
+  private lookX = 0;
+  private lookY = 0;
+  private readonly onLookDown = (e: PointerEvent): void => {
+    if (this.lookPointer !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    this.lookPointer = e.pointerId;
+    this.lookX = e.clientX;
+    this.lookY = e.clientY;
+    grabLook(this.look);
+    document.body.classList.add('inf-looking');
+    try {
+      this.renderer.domElement.setPointerCapture(e.pointerId);
+    } catch {
+      // Without capture the drag still works while the pointer stays over the picture.
+    }
+  };
+  private readonly onLookMove = (e: PointerEvent): void => {
+    if (e.pointerId !== this.lookPointer) return;
+    // The button came up somewhere the page never heard about.
+    if (e.pointerType === 'mouse' && e.buttons === 0) return this.endLook();
+    dragLook(this.look, e.clientX - this.lookX, e.clientY - this.lookY, window.innerHeight);
+    this.lookX = e.clientX;
+    this.lookY = e.clientY;
+  };
+  private readonly onLookUp = (e: PointerEvent): void => {
+    if (e.pointerId === this.lookPointer) this.endLook();
+  };
+  private readonly endLook = (): void => {
+    if (this.lookPointer === null) return;
+    this.lookPointer = null;
+    releaseLook(this.look);
+    document.body.classList.remove('inf-looking');
+  };
   private orbitAngle = 0;
   private segmentShown = -1;
   private lastShot = -100;
@@ -188,12 +221,20 @@ export class InfiniteFlight {
     window.addEventListener('pointermove', this.wake);
     window.addEventListener('pointerdown', this.wake);
     this.wake();
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener('pointerdown', this.onLookDown);
+    canvas.addEventListener('pointermove', this.onLookMove);
+    canvas.addEventListener('pointerup', this.onLookUp);
+    canvas.addEventListener('pointercancel', this.onLookUp);
+    canvas.addEventListener('lostpointercapture', this.onLookUp);
+    window.addEventListener('blur', this.endLook);
+    document.body.classList.add('inf-on');
   }
 
   nextCamera(): void {
     // A chosen camera stays a while before the autopilot cuts again.
-    this.modeTimer = 45;
-    this.modeIndex = (this.modeIndex + 1) % CAMERA_ORDER.length;
+    this.modeTimer = CHOSEN_HOLD;
+    this.modeIndex = nextCameraIndex(this.modeIndex);
     this.setMode(CAMERA_ORDER[this.modeIndex]!);
   }
 
@@ -215,6 +256,14 @@ export class InfiniteFlight {
     window.removeEventListener('pointerdown', this.wake);
     window.clearTimeout(this.idleTimer);
     document.body.classList.remove('cursor-idle');
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener('pointerdown', this.onLookDown);
+    canvas.removeEventListener('pointermove', this.onLookMove);
+    canvas.removeEventListener('pointerup', this.onLookUp);
+    canvas.removeEventListener('pointercancel', this.onLookUp);
+    canvas.removeEventListener('lostpointercapture', this.onLookUp);
+    window.removeEventListener('blur', this.endLook);
+    document.body.classList.remove('inf-on', 'inf-looking');
     this.fullscreen.dispose();
     this.overlay.remove();
   }
@@ -318,7 +367,6 @@ export class InfiniteFlight {
     const shift = this.pos.clone().sub(this.origin);
     this.origin.add(shift);
     for (const c of this.chunks.values()) rebaseChunk(c, shift);
-    this.flybyAt.sub(shift);
   }
 
   // --- autopilot guns ----------------------------------------------------------------------
@@ -403,29 +451,20 @@ export class InfiniteFlight {
 
   private setMode(mode: CameraMode): void {
     this.mode = mode;
-    if (mode === 'flyby') this.placeFlyby();
     if (mode === 'orbit') this.orbitAngle = Math.random() * Math.PI * 2;
+    resetLook(this.look);
     this.placeCamera(0, true);
   }
 
-  /** A spot ahead on the path and off to one side, for the ship to sweep past. */
-  private placeFlyby(): void {
-    const path = this.director.path;
-    const f = path.frame(this.s + Math.max(250, this.speed * 1.6));
-    const side = Math.random() < 0.5 ? -1 : 1;
-    this.flybyAt.set(
-      f.position[0] + f.right[0] * 28 * side + f.up[0] * 9 - this.origin.x,
-      f.position[1] + f.right[1] * 28 * side + f.up[1] * 9 - this.origin.y,
-      f.position[2] + f.right[2] * 28 * side + f.up[2] * 9 - this.origin.z,
-    );
-  }
-
   private placeCamera(dt: number, snap: boolean): void {
+    stepLook(this.look, dt);
+    // No cut while the player looks around, nor right after the view comes home.
+    if (lookBusy(this.look)) this.modeTimer = Math.max(this.modeTimer, AFTER_LOOK);
     this.modeTimer -= dt;
     if (this.modeTimer <= 0) {
       // The timer first: setMode places the camera through here again.
-      this.modeTimer = 18 + Math.random() * 14;
-      this.modeIndex = (this.modeIndex + 1) % CAMERA_ORDER.length;
+      this.modeTimer = autoHold(Math.random());
+      this.modeIndex = nextCameraIndex(this.modeIndex);
       this.setMode(CAMERA_ORDER[this.modeIndex]!);
       return;
     }
@@ -457,16 +496,6 @@ export class InfiniteFlight {
         fov = 60;
         break;
       }
-      case 'flyby': {
-        // Once the ship is well past, find the next spot ahead.
-        const behind = shipAt.clone().sub(this.flybyAt).dot(this.fwd);
-        if (behind > 260) this.placeFlyby();
-        cam.position.copy(this.flybyAt);
-        cam.up.set(0, 1, 0);
-        cam.lookAt(shipAt);
-        fov = 50;
-        break;
-      }
       case 'cockpit': {
         cam.position.copy(shipAt).add(new THREE.Vector3(0, 1.6, -8).applyQuaternion(this.quat));
         cam.quaternion.copy(this.quat);
@@ -474,10 +503,29 @@ export class InfiniteFlight {
         break;
       }
     }
+    this.applyLook(shipAt);
     if (Math.abs(cam.fov - fov) > 0.01) {
       cam.fov = snap ? fov : cam.fov + (fov - cam.fov) * approach(3, dt);
       cam.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * Turns the placed camera by the free-look angles, in its own frame: round the ship, which
+   * keeps its place on screen, or, from the cockpit, in place — there the world follows the
+   * finger instead of the ship, so the angles flip.
+   */
+  private applyLook(shipAt: THREE.Vector3): void {
+    const { yaw, pitch } = this.look;
+    if (yaw === 0 && pitch === 0) return;
+    const cam = this.camera;
+    const sign = this.mode === 'cockpit' ? -1 : 1;
+    const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(sign * pitch, sign * yaw, 0, 'YXZ'));
+    if (this.mode !== 'cockpit') {
+      const world = cam.quaternion.clone().multiply(turn).multiply(cam.quaternion.clone().invert());
+      cam.position.sub(shipAt).applyQuaternion(world).add(shipAt);
+    }
+    cam.quaternion.multiply(turn);
   }
 
   // --- visuals and info ------------------------------------------------------------------------
