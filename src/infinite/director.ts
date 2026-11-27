@@ -208,9 +208,10 @@ const STAR_GAP = 6;
 /**
  * Hands out segments in order, remembering enough of the past to pace them: no star too soon
  * after the last, never two nebulae or planets back to back, no three fields in a row. A
- * megastructure or a gigastructure has the sky to itself: no planet or star in its stretch or
- * either side of it. Beyond that, a gigastructure and any star, planet or other gigastructure
- * loaded alongside it keep apart: whichever comes later gives way.
+ * gigastructure has the sky to itself: no planet or star in its stretch or either side of it.
+ * A megastructure takes its own stretch, and its neighbours keep their stars and planets. Any
+ * star or planet and a mega- or gigastructure beside it keep apart: whichever comes later
+ * gives way.
  */
 export class Director {
   readonly path: Path;
@@ -225,6 +226,8 @@ export class Director {
   private lightStar: Star | null = null;
   /** The gigastructures made so far, by stretch, with the spheres that hold them. */
   private readonly gigas = new Map<number, Giga>();
+  /** The spheres that hold each megastructure made so far, by stretch. */
+  private readonly megas = new Map<number, Array<{ at: Vec3; r: number }>>();
 
   constructor(seed: number, opts: DirectorOptions = {}) {
     this.seed = seed;
@@ -270,10 +273,10 @@ export class Director {
     if (i === 1) return 'field';
     const prev = this.segments[i - 1]!.kind;
     const prev2 = this.segments[i - 2]?.kind;
-    const nearMega = this.hasMega(i - 1) || this.hasMega(i + 1) || this.hasGiga(i - 1) || this.hasGiga(i) || this.hasGiga(i + 1);
+    const nearGiga = this.hasGiga(i - 1) || this.hasGiga(i) || this.hasGiga(i + 1);
     const allowed = (Object.keys(WEIGHTS) as Array<keyof typeof WEIGHTS>).filter((k) => {
       if (k === 'star' && i - this.lastStar < STAR_GAP) return false;
-      if ((k === 'planet' || k === 'star') && nearMega) return false;
+      if ((k === 'planet' || k === 'star') && nearGiga) return false;
       if ((k === 'nebula' || k === 'planet' || k === 'star' || k === 'drift') && k === prev) return false;
       if (k === 'field' && prev === 'field' && prev2 === 'field') return false;
       return true;
@@ -298,9 +301,10 @@ export class Director {
       this.light = giga.star.position;
       this.lightStar = giga.star.star;
     }
-    // A star or planet that would touch a gigastructure loaded alongside gives way to it.
-    const alongside = this.gigasAlongside(i);
-    const clashes = (p: Vec3, r: number) => alongside.some((g) => g.spheres.some((x) => distance(x.at, p) < x.r + r));
+    // A star or planet that would touch a gigastructure loaded alongside, or the megastructure
+    // in the stretch before, gives way to it.
+    const alongside = [...this.gigasAlongside(i).map((g) => g.spheres), this.megas.get(i - 1) ?? []];
+    const clashes = (p: Vec3, r: number) => alongside.some((spheres) => spheres.some((x) => distance(x.at, p) < x.r + r));
     const path = this.path;
     const s0 = i * SEGMENT;
     const s1 = s0 + SEGMENT;
@@ -390,9 +394,13 @@ export class Director {
         }
         break;
       }
-      case 'mega':
-        things.push(this.megastructure(rng, s0));
+      case 'mega': {
+        // It keeps clear of the stars and planets of the stretch before, made already.
+        const mega = this.megastructure(rng, s0, i > 0 ? bodies(this.segments[i - 1]!.things) : []);
+        this.megas.set(i, megaSpheres(mega));
+        things.push(mega);
         break;
+      }
       case 'drift':
         // Open space, now and then a far planet on the horizon (not where a gigastructure stands).
         if (rng.chance(0.4)) {
@@ -470,26 +478,32 @@ export class Director {
   /**
    * One megastructure in the middle of the stretch (it keeps to the middle three fifths, so
    * the neighbours' fields and ruins never reach it). A gate straddles the path; a habitat or a
-   * lattice starts a set distance out and is pushed further until every part clears the corridor.
+   * lattice starts a set distance out and is pushed further until every part clears the corridor
+   * and the `obstacles` (the stars and planets next door). A gate that would touch one becomes
+   * a habitat, which can move.
    */
-  private megastructure(rng: Rng, s0: number): Megastructure {
+  private megastructure(rng: Rng, s0: number, obstacles: ReadonlyArray<{ at: Vec3; r: number }>): Megastructure {
     const path = this.path;
     const mid = path.frame(s0 + SEGMENT / 2);
-    const kind = rng.pick(MEGA_KINDS);
+    let kind = rng.pick(MEGA_KINDS);
     const seed = rng.int(1, 1e9);
     const out = (angle: number): Vec3 => add(scale(mid.right, Math.cos(angle)), scale(mid.up, Math.sin(angle)));
     // The path samples once, then every sphere checks against them.
     const samples: Vec3[] = [];
     for (let s = Math.max(0, s0 - SEGMENT); s <= s0 + 2 * SEGMENT; s += 60) samples.push(path.at(s));
-    const clear = (m: Megastructure) => megaSpheres(m).every(({ at, r }) => samples.every((q) => distance(at, q) > CORRIDOR + r));
+    const clear = (m: Megastructure) =>
+      megaSpheres(m).every(({ at, r }) => samples.every((q) => distance(at, q) > CORRIDOR + r) && obstacles.every((o) => distance(at, o.at) > r + o.r));
     const settle = (make: (d: number) => Megastructure, d0: number): Megastructure => {
       let m = make(d0);
       for (let k = 0; k < 12 && !clear(m); k++) m = make(d0 * (1.2 + k * 0.15));
       return m;
     };
+    if (kind === 'gate') {
+      const gate: Megastructure = { type: 'gate', center: mid.position, axis: mid.forward, up: mid.up, radius: rng.range(650, 1000), seed };
+      if (clear(gate)) return gate;
+      kind = 'habitat';
+    }
     switch (kind) {
-      case 'gate':
-        return { type: 'gate', center: mid.position, axis: mid.forward, up: mid.up, radius: rng.range(650, 1000), seed };
       case 'habitat': {
         const radius = rng.range(450, 650);
         const length = rng.range(2200, 2800);
@@ -497,8 +511,8 @@ export class Director {
         const make = (d: number): Habitat => ({ type: 'habitat', center: add(mid.position, scale(dir, d)), axis: mid.forward, up: dir, radius, length, seed });
         return settle(make, CORRIDOR + habitatReach(radius, length) + rng.range(150, 450));
       }
-      case 'lattice': {
-        // Off to a side or overhead, hollow side to the path.
+      default: {
+        // A lattice, off to a side or overhead, hollow side to the path.
         const dir = out(rng.range(0.25, Math.PI - 0.25));
         const curve = rng.range(9000, 14000);
         const width = rng.range(1300, 1750);

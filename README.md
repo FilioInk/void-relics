@@ -92,9 +92,9 @@ greenhouses — beside it, or a torn patch of a **Dyson lattice** of hexagonal c
 overhead. **Gigastructures** fill one stretch in fifty: a **ringworld** whose band of land and
 sea arches across the sky some 25 km overhead, its star far below, or **Dyson rings** around a
 star some 35 km off, each with a star of its own class. They fade in long before you reach
-them and stay a while after. The autopilot slows down to take either in, no planet or star
-shares their stretch or the ones beside it, and anything further off that would touch a
-gigastructure gives way to it.
+them and stay a while after. The autopilot slows down to take either in. Stars and planets
+still pass next to a megastructure; a gigastructure keeps its stretch and the ones beside it
+to itself. Whatever would touch a mega- or gigastructure gives way to it.
 
 **The chances** are `MEGA_CHANCE` (10%) and `GIGA_CHANCE` (2%) in
 `src/world/megastructures.ts`. Every infinite-flight stretch rolls for each on its own; a star

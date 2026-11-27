@@ -182,8 +182,9 @@ test('a higher chance only adds megastructures, never moves them', () => {
   assert.ok(added > 0);
 });
 
-test('a megastructure has the sky to itself and is one of three kinds', () => {
+test('a megastructure is one of three kinds, its neighbours keep their stars, and nothing touches it', () => {
   const kinds = new Set<string>();
+  let besideStars = 0;
   for (const seed of [1, 2, 3, 1337]) {
     const d = new Director(seed, { megaChance: 0.25 });
     const segs = Array.from({ length: 160 }, (_, i) => d.segment(i));
@@ -193,11 +194,23 @@ test('a megastructure has the sky to itself and is one of three kinds', () => {
         continue;
       }
       assert.equal(s.things.filter(isMega).length, 1);
-      kinds.add(s.things[0]!.type);
-      for (const k of [s.index - 1, s.index + 1]) assert.ok(!['planet', 'star'].includes(segs[k]?.kind ?? ''), `seed ${seed}: ${segs[k]?.kind} next to a megastructure at ${s.index}`);
+      const m = s.things[0]!;
+      kinds.add(m.type);
+      if (!isMega(m)) assert.fail(`segment ${s.index} holds a ${m.type}`);
+      const spheres = megaSpheres(m);
+      for (const k of [s.index - 1, s.index + 1]) {
+        const n = segs[k];
+        if (!n) continue;
+        if (n.kind === 'star') besideStars++;
+        for (const t of n.things) {
+          const body = t.type === 'star' ? { at: t.position, r: t.radius * 1.3 } : t.type === 'planet' ? { at: t.planet.position, r: t.planet.radius * (t.planet.ring ? 2.4 : 1.1) } : null;
+          if (body) for (const x of spheres) assert.ok(distance(x.at, body.at) > x.r + body.r, `seed ${seed}: a ${t.type} at ${k} touches the ${m.type} at ${s.index}`);
+        }
+      }
     }
   }
   assert.deepEqual([...kinds].sort(), ['gate', 'habitat', 'lattice']);
+  assert.ok(besideStars > 5, `${besideStars} stars beside a megastructure`);
 });
 
 test('a megastructure keeps to the middle of its stretch', () => {
@@ -369,8 +382,9 @@ test('almost every gigastructure rolled finds room, and stars still come often',
       if (s.things.some(isGiga)) made++;
       if (s.kind === 'star') stars++;
     }
-    // Megastructures take some stretches and keep stars off their neighbours: still one in 40.
-    assert.ok(stars >= 15, `seed ${seed}: ${stars} stars in 600 stretches`);
+    // Megastructures take a tenth of the stretches, gigastructures keep stars off theirs and
+    // their neighbours: still one star in 30 stretches.
+    assert.ok(stars >= 20, `seed ${seed}: ${stars} stars in 600 stretches`);
   }
   assert.ok(made >= rolled * 0.85, `${made} of ${rolled} made`);
 });
