@@ -72,3 +72,19 @@ export function patchShader(source: string, edits: ReadonlyArray<readonly [strin
   }
   return out;
 }
+
+/**
+ * three's sky-box vertex shader pins the box to the far plane with `z = w`. Under the reversed
+ * depth buffer that is the near plane instead, and a Mali-G615 (Chrome on Android) clipped pieces
+ * of the box sitting exactly on it: the sky came out in black stair-steps and triangles that
+ * moved with the view. The box draws with depth test and depth writes off, so its depth means
+ * nothing; halfway into the clip volume is safe under either depth mode.
+ */
+export function backgroundVertexFix(source: string): string {
+  return patchShader(source, [
+    [
+      'gl_Position.z = gl_Position.w;',
+      '#ifdef USE_REVERSED_DEPTH_BUFFER\n\tgl_Position.z = 0.5 * gl_Position.w;\n#else\n\tgl_Position.z = gl_Position.w;\n#endif',
+    ],
+  ]);
+}
