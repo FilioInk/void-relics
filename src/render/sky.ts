@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createRng } from '../core/rng.ts';
-import { FRAG_HEAD, FRAG_TAIL, NOISE, VERT_HEAD, VERT_TAIL } from './glsl.ts';
+import { FRAG_HEAD, FRAG_TAIL, NOISE, VERT_HEAD, VERT_TAIL, backgroundVertexFix } from './glsl.ts';
 
 /**
  * The far sky in two parts: the smooth glow (milky band and faint distant nebulae) is baked
@@ -130,6 +130,9 @@ function makeStars(seed: number): THREE.Points {
 export type Sky = { background: THREE.CubeTexture; stars: THREE.Points; update(camera: THREE.Camera, pixelRatio: number): void };
 
 export function createSky(renderer: THREE.WebGLRenderer, seed: number): Sky {
+  // three builds the sky-box material from ShaderLib on the first frame with a cube background.
+  const lib = THREE.ShaderLib.backgroundCube;
+  if (!lib.vertexShader.includes('USE_REVERSED_DEPTH_BUFFER')) lib.vertexShader = backgroundVertexFix(lib.vertexShader);
   const background = bakeBackground(renderer, seed);
   const stars = makeStars(seed);
   const mat = stars.material as THREE.ShaderMaterial;
