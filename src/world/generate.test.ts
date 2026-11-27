@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { GIGA_CHANCE, MEGA_CHANCE, SYSTEM_SITES, bandDistance, gigaBands, megaBound, megaSpheres } from './megastructures.ts';
 import { ARTIFACT_COUNT, DEFAULT_SEED, JUNK_VARIANTS, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateJunk, generateWorld, junkNormal, type Vec3 } from './generate.ts';
 import { GOLDEN_SUN, SYSTEM_FAMILIES, SYSTEM_STAR_MAX_M, gameRadius } from './stars.ts';
 
@@ -183,4 +184,59 @@ test('debris is the same for the same seed', () => {
   const b = generateWorld(42);
   assert.deepEqual([a.stations, a.graveyards, a.junk], [b.stations, b.graveyards, b.junk]);
   assert.deepEqual(generateJunk(a), generateJunk(b));
+});
+
+for (const seed of [1, 7, 1337, 2024]) {
+  test(`seed ${seed}: mega- and gigastructures stand clear of everything`, () => {
+    // Every site rolls one: as many as fit.
+    const w = generateWorld(seed, { megaChance: 1, gigaChance: 1 });
+    assert.ok(w.megastructures.length >= 12, `${w.megastructures.length} megastructures`);
+    assert.ok(w.giga, 'a gigastructure');
+    const things = [
+      ...w.artifacts.map((a) => ({ id: a.id, p: a.position, r: 0 })),
+      ...w.wrecks.map((x) => ({ id: x.id, p: x.position, r: x.size * 3 })),
+      ...w.stations.map((x) => ({ id: x.id, p: x.position, r: x.size })),
+      ...w.graveyards.map((x) => ({ id: x.id, p: x.center, r: x.radius * 1.3 })),
+      ...w.planets.map((x) => ({ id: x.id, p: x.position, r: x.radius * (x.ring ? 2.4 : 1) })),
+      { id: 'spawn', p: w.spawn.position, r: 2000 },
+    ];
+    for (const m of w.megastructures) {
+      for (const { at, r } of megaSpheres(m.shape)) {
+        assert.ok(dist(at, w.sun.position) > w.sun.warnRadius + r, `${m.id} is in the star's heat`);
+        assert.ok(!inRocks(at, r, w), `${m.id} sits among rocks`);
+        for (const x of things) assert.ok(dist(at, x.p) > x.r + r, `${m.id} (${m.shape.type}) overlaps ${x.id}`);
+        if (w.junk) assert.ok(dist(at, w.junk.center) > w.junk.outer + r, `${m.id} cuts the junk ring`);
+      }
+      for (const o of w.megastructures) if (o !== m) assert.ok(dist(o.shape.center, m.shape.center) > megaBound(o.shape) + megaBound(m.shape), `${m.id} overlaps ${o.id}`);
+    }
+    for (const b of gigaBands(w.giga.shape)) {
+      for (const x of things) assert.ok(bandDistance(x.p, b) > x.r + b.width / 2, `the ${w.giga.shape.type} cuts ${x.id}`);
+      for (const m of w.megastructures) for (const { at, r } of megaSpheres(m.shape)) assert.ok(bandDistance(at, b) > r, `the ${w.giga.shape.type} cuts ${m.id}`);
+    }
+  });
+}
+
+test('a galaxy holds about two megastructures, and now and then a gigastructure', () => {
+  let megas = 0;
+  let gigas = 0;
+  const n = 60;
+  for (let seed = 1; seed <= n; seed++) {
+    const w = generateWorld(seed);
+    megas += w.megastructures.length;
+    if (w.giga) gigas++;
+  }
+  const expected = SYSTEM_SITES * MEGA_CHANCE;
+  assert.ok(Math.abs(megas / n - expected) < 0.7, `${(megas / n).toFixed(2)} per galaxy, expected ${expected}`);
+  const gigaShare = 1 - (1 - GIGA_CHANCE) ** SYSTEM_SITES;
+  assert.ok(Math.abs(gigas / n - gigaShare) < 0.2, `${gigas} of ${n} galaxies, expected ${(gigaShare * n).toFixed(0)}`);
+  assert.equal(generateWorld(5, { megaChance: 0, gigaChance: 0 }).megastructures.length, 0);
+  assert.equal(generateWorld(5, { gigaChance: 0 }).giga, null);
+});
+
+test('the structures move nothing else, whatever their chances', () => {
+  const plain = generateWorld(42, { megaChance: 0, gigaChance: 0 });
+  const full = generateWorld(42, { megaChance: 1, gigaChance: 1 });
+  const strip = (w: ReturnType<typeof generateWorld>) => ({ ...w, megastructures: [], giga: null });
+  assert.deepEqual(strip(full), strip(plain));
+  assert.deepEqual(generateWorld(42), generateWorld(42), 'deterministic');
 });

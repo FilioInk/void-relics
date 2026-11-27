@@ -1,7 +1,22 @@
 import { dist, junkNormal, type Nebula, type Vec3, type World } from './generate.ts';
+import { bandDistance, gigaBands, megaBound } from './megastructures.ts';
 
 /** Where the ship is, for the location banner and the music. */
-export type RegionKind = 'star' | 'wreck' | 'station' | 'graveyard' | 'nebula' | 'field' | 'junk' | 'belt' | 'planet' | 'deep';
+export type RegionKind =
+  | 'star'
+  | 'wreck'
+  | 'station'
+  | 'graveyard'
+  | 'gate'
+  | 'habitat'
+  | 'lattice'
+  | 'nebula'
+  | 'field'
+  | 'junk'
+  | 'belt'
+  | 'planet'
+  | 'ringworld'
+  | 'deep';
 export type Region = { kind: RegionKind; id: string; name: string | null };
 
 export function regionAt(p: Vec3, world: World): Region {
@@ -10,6 +25,7 @@ export function regionAt(p: Vec3, world: World): Region {
   for (const w of world.wrecks) if (dist(p, w.position) < w.size * 8) return { kind: 'wreck', id: w.id, name: w.name };
   for (const s of world.stations) if (dist(p, s.position) < s.size * 6) return { kind: 'station', id: s.id, name: s.name };
   for (const g of world.graveyards) if (dist(p, g.center) < g.radius * 2) return { kind: 'graveyard', id: g.id, name: g.name };
+  for (const m of world.megastructures) if (dist(p, m.shape.center) < megaBound(m.shape) * 1.2) return { kind: m.shape.type, id: m.id, name: m.name };
   for (const n of world.nebulae) if (dist(p, n.center) < n.radius * 0.8) return { kind: 'nebula', id: n.id, name: n.name };
   for (const c of world.clusters) if (dist(p, c.center) < c.radius * 1.05) return { kind: 'field', id: c.id, name: c.name };
   const ring = world.junk;
@@ -25,6 +41,10 @@ export function regionAt(p: Vec3, world: World): Region {
   if (r > world.belt.inner - 300 && r < world.belt.outer + 300 && Math.abs(p[1]) < world.belt.thickness * 2.5)
     return { kind: 'belt', id: 'belt', name: world.belt.name };
   for (const pl of world.planets) if (dist(p, pl.position) < pl.radius * 4) return { kind: 'planet', id: pl.id, name: pl.name };
+  // Dyson rings sit inside the star's own region; a ringworld has one of its own.
+  const giga = world.giga;
+  if (giga?.shape.type === 'ringworld' && gigaBands(giga.shape).some((b) => bandDistance(p, b) < b.width * 1.5))
+    return { kind: 'ringworld', id: giga.id, name: giga.name };
   return { kind: 'deep', id: 'deep', name: null };
 }
 

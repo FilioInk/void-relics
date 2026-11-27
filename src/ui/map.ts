@@ -1,6 +1,7 @@
 import { createRng } from '../core/rng.ts';
 import { starKind, t } from '../text.ts';
 import { WORLD_RADIUS, junkNormal, type Asteroid, type World } from '../world/generate.ts';
+import { gigaBands } from '../world/megastructures.ts';
 import { cssColor, starLook } from '../world/stars.ts';
 import { h } from './dom.ts';
 
@@ -42,6 +43,8 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
     item('border:1px solid #c8d4e0;transform:scale(0.75)', t('legendStation'));
     item('background:radial-gradient(circle,#c8d4e0 0 1.5px,transparent 2px) 0 0/6px 6px;transform:scale(0.8)', t('legendGraveyard'));
     item('border:2px dotted rgba(190,200,215,0.7);border-radius:50%;transform:scale(0.8)', t('legendJunk'));
+    if (world.megastructures.length > 0) item('border:1.5px solid #8fe3ff;border-radius:30%;transform:rotate(30deg) scale(0.8)', t('legendMega'));
+    if (world.giga) item('border:2px solid rgba(255,214,140,0.8);border-radius:50%;transform:scaleY(0.5)', t('legendGiga'));
     item('background:#5ff5e0;transform:rotate(45deg) scale(0.8);box-shadow:0 0 6px #5ff5e0', t('legendFound'));
     item('border:1px dashed #ffb547;border-radius:50%', t('legendSignal'));
     item('width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #fff', t('legendYou'));
@@ -148,6 +151,29 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.lineWidth = 1;
+      }
+
+      // The gigastructure's bands seen from above (a tilted circle is an ellipse squashed along
+      // its tilt), and each megastructure as a small hexagon.
+      if (world.giga) {
+        ctx.strokeStyle = 'rgba(255,214,140,0.55)';
+        for (const b of gigaBands(world.giga.shape)) {
+          const n = b.axis;
+          ctx.lineWidth = Math.max(1.5, b.width * s);
+          ctx.beginPath();
+          ctx.ellipse(X(b.center[0]), Y(b.center[2]), b.radius * s * Math.abs(n[1]), b.radius * s, Math.atan2(n[2], n[0]), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.lineWidth = 1;
+      }
+      ctx.strokeStyle = 'rgba(143,227,255,0.95)';
+      for (const m of world.megastructures) {
+        const x = X(m.shape.center[0]);
+        const y = Y(m.shape.center[2]);
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) ctx.lineTo(x + Math.cos((k * Math.PI) / 3) * 5, y + Math.sin((k * Math.PI) / 3) * 5);
+        ctx.closePath();
+        ctx.stroke();
       }
 
       // Stations as squares, satellite graveyards as a scatter of dots.

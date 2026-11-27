@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Target } from '../game/targets.ts';
 import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
 import { createDebris } from '../render/debris.ts';
+import { createGigastructure, createMegastructure } from '../render/megastructures.ts';
 import { createNebulae } from '../render/nebula.ts';
 import { createPlanet } from '../render/planets.ts';
 import { createSun } from '../render/sun.ts';
@@ -46,6 +47,9 @@ export type StreamContext = {
   /** Called for each new object, e.g. to compile its shaders before it shows. */
   added(object: THREE.Object3D): void;
 };
+
+/** Seconds a gigastructure takes to fade in. */
+const GIGA_FADE = 6;
 
 const local = (p: Vec3, origin: THREE.Vector3): THREE.Vector3 => new THREE.Vector3(p[0] - origin.x, p[1] - origin.y, p[2] - origin.z);
 
@@ -116,6 +120,27 @@ function build(thing: Thing, segment: Segment, chunk: Chunk, ctx: StreamContext,
       const view = createWrecks([{ id: 'w', name: '', position: [0, 0, 0], size: thing.size, pieces: thing.pieces, seed: thing.seed }]);
       put(view.group, thing.position);
       chunk.updaters.push((_dt, t) => view.update(t));
+      break;
+    }
+    case 'gate':
+    case 'habitat':
+    case 'lattice': {
+      const view = createMegastructure(thing, ctx.envMap);
+      put(view.group, thing.center);
+      chunk.updaters.push((dt, t) => view.update(t, dt));
+      break;
+    }
+    case 'ringworld':
+    case 'armillary': {
+      // Loaded while already in view, so it fades in over a few seconds once its shaders are ready.
+      const view = createGigastructure(thing, ctx.envMap);
+      put(view.group, thing.center);
+      let shown = 0;
+      view.setOpacity(0);
+      chunk.updaters.push((dt, t) => {
+        if (view.group.visible && shown < 1) view.setOpacity((shown = Math.min(1, shown + dt / GIGA_FADE)));
+        view.update(t, dt);
+      });
       break;
     }
     case 'station':
