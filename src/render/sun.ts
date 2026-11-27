@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Sun } from '../world/generate.ts';
-import type { Rgb, StarLook } from '../world/stars.ts';
+import { starLook, type Rgb } from '../world/stars.ts';
 import { FRAG_HEAD, FRAG_TAIL, NOISE, VERT_HEAD, VERT_TAIL } from './glsl.ts';
 
 /** The star: a boiling HDR surface for the bloom to catch, a corona billboard, and the light. */
@@ -15,27 +15,21 @@ export type SunView = {
 const linear = (c: Rgb): THREE.Color => new THREE.Color().setRGB(c[0], c[1], c[2]);
 
 /**
- * The relic hunt's star keeps its hand-tuned golden palette, mixed from its tint; a star built
- * from a `StarLook` (infinite flight) takes its colours, brightness and corona from its class.
- * A `fading` star is drawn see-through so it can come and go without popping.
+ * A star takes its colours, brightness, corona and light from its class (`starLook`). A
+ * `fading` star (infinite flight) is drawn see-through so it can come and go without popping.
  */
-export function createSun(sun: Sun, look?: StarLook, fading = false): SunView {
+export function createSun(sun: Sun, fading = false): SunView {
   const group = new THREE.Group();
   group.position.set(...sun.position);
-  const tint = new THREE.Color(sun.color);
-  const deep = look ? linear(look.deep) : new THREE.Color().setRGB(0.8, 0.14, 0.01);
-  const mid = look ? linear(look.mid) : new THREE.Color().setRGB(1, 0.45, 0.06).lerp(tint, 0.3);
-  const hot = look ? linear(look.hot) : new THREE.Color().setRGB(1, 0.82, 0.5);
-  const coronaTint = look ? linear(look.corona) : new THREE.Color().setRGB(1, 0.55, 0.2).lerp(tint, 0.5);
-  const gain = look?.gain ?? 1.9;
-  const reach = look?.reach ?? 6.8;
+  const look = starLook(sun.star);
+  const { gain, reach } = look;
   // The corona brightens more gently than the surface, and a wide one spreads its light thinner.
   const coronaGain = Math.sqrt(gain / 1.9) * Math.min(1, 6.8 / reach) ** 0.7;
   const fade = { value: 1 };
 
   const surface = new THREE.ShaderMaterial({
     transparent: fading,
-    uniforms: { uTime: { value: 0 }, uDeep: { value: deep }, uMid: { value: mid }, uHot: { value: hot }, uGain: { value: gain }, uFade: fade, uCells: { value: look?.cells ?? 18 } },
+    uniforms: { uTime: { value: 0 }, uDeep: { value: linear(look.deep) }, uMid: { value: linear(look.mid) }, uHot: { value: linear(look.hot) }, uGain: { value: gain }, uFade: fade, uCells: { value: look.cells } },
     vertexShader: /* glsl */ `
       ${VERT_HEAD}
       varying vec3 vN;
@@ -87,7 +81,7 @@ export function createSun(sun: Sun, look?: StarLook, fading = false): SunView {
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    uniforms: { uTime: { value: 0 }, uTint: { value: coronaTint }, uRadius: { value: sun.radius }, uReach: { value: reach }, uGain: { value: coronaGain }, uFade: fade },
+    uniforms: { uTime: { value: 0 }, uTint: { value: linear(look.corona) }, uRadius: { value: sun.radius }, uReach: { value: reach }, uGain: { value: coronaGain }, uFade: fade },
     vertexShader: /* glsl */ `
       ${VERT_HEAD}
       uniform float uRadius;
@@ -127,7 +121,8 @@ export function createSun(sun: Sun, look?: StarLook, fading = false): SunView {
   corona.renderOrder = 2;
   group.add(corona);
 
-  const light = new THREE.PointLight(new THREE.Color(sun.color).lerp(new THREE.Color(0xffffff), 0.5), 3.2, 0, 0);
+  // 3.2 for a Sun-like star, more or less with the class's luminosity (lightIntensity is 2.6 for the Sun).
+  const light = new THREE.PointLight(linear(look.light), (3.2 * look.lightIntensity) / 2.6, 0, 0);
   group.add(light);
 
   return {

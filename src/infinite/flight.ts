@@ -6,10 +6,10 @@ import { WEAPON, createWeapon, stepWeapon } from '../game/weapons.ts';
 import { createCombatFx, type CombatFx } from '../render/combat.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { GUN_MOUNTS, createShip, type ShipView } from '../render/ship.ts';
-import { t, type Key } from '../text.ts';
+import { starFacts, t } from '../text.ts';
 import { h, icon } from '../ui/dom.ts';
 import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
-import { formatQuantity, starLook, type Star, type StarFamily } from '../world/stars.ts';
+import { starLook, type Star } from '../world/stars.ts';
 import { Director, SEGMENT, cruiseSpeed, distance, isGiga, isMega, starPresence, wantedSegments, type Segment } from './director.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
@@ -587,10 +587,7 @@ export class InfiniteFlight {
       : mega?.type === 'lattice' ? t('regionLattice', { name: seg.name })
       : t('regionDeep');
     // A star's line under its name: its class, as a catalogue would give it.
-    const facts =
-      seg.kind === 'star' && star?.type === 'star'
-        ? t('starFacts', { kind: t(STAR_KIND[star.star.family]), type: star.star.spectral, temp: formatQuantity(star.star.teff), radius: formatQuantity(star.star.radius) })
-        : null;
+    const facts = seg.kind === 'star' && star?.type === 'star' ? starFacts(star.star) : null;
     this.caption.replaceChildren(text, ...(facts ? [h('span', { class: 'inf-caption-facts' }, facts)] : []));
     this.caption.classList.remove('show');
     void this.caption.offsetWidth;
@@ -603,19 +600,6 @@ const WHITE = new THREE.Color(1, 1, 1);
 const GIGA_CRUISE = 600;
 /** The key light before the first star: a warm white from somewhere off ahead. */
 const DEFAULT_KEY = { color: new THREE.Color(0xfff0dc), intensity: 2.6 };
-const STAR_KIND: Record<StarFamily, Key> = {
-  O: 'starO',
-  B: 'starB',
-  A: 'starA',
-  F: 'starF',
-  G: 'starG',
-  K: 'starK',
-  M: 'starM',
-  redGiant: 'starRedGiant',
-  redSupergiant: 'starRedSupergiant',
-  blueSupergiant: 'starBlueSupergiant',
-  whiteDwarf: 'starWhiteDwarf',
-};
 /** How long the pointer may rest before the button and cursor fade out. */
 const IDLE_MS = 2500;
 const ICON_CAMERA = '<path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z"/><circle cx="12" cy="13.5" r="3.2"/>';

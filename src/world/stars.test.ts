@@ -5,16 +5,21 @@ import {
   CLASS_CODES,
   EVOLVED,
   FAMILY_WEIGHTS,
+  GOLDEN_SUN,
   MAIN_SEQUENCE,
   SUN_RADIUS_M,
+  SYSTEM_FAMILIES,
+  SYSTEM_STAR_MAX_M,
   T_SUN,
   blackbody,
+  cssColor,
   formatQuantity,
   gameRadius,
   luminosityOf,
   mainSequenceAt,
   pickFamily,
   sampleStar,
+  sampleSystemStar,
   starLook,
   type StarFamily,
 } from './stars.ts';
@@ -160,4 +165,32 @@ test('caption numbers are short and grouped', () => {
   assert.equal(formatQuantity(1234), '1,230');
   assert.equal(formatQuantity(44900), '44,900');
   assert.equal(formatQuantity(Number.NaN), '—');
+});
+
+test("the relic hunt's star is a dwarf small enough for its planets", () => {
+  const rng = createRng(8);
+  const seen = new Set<StarFamily>();
+  for (let k = 0; k < 600; k++) {
+    const s = sampleSystemStar(rng);
+    seen.add(s.family);
+    assert.ok(SYSTEM_FAMILIES.includes(s.family), s.family);
+    assert.ok(gameRadius(s) <= SYSTEM_STAR_MAX_M, `${s.spectral}: ${gameRadius(s).toFixed(0)} m`);
+  }
+  assert.equal(seen.size, SYSTEM_FAMILIES.length);
+});
+
+test('map colours are sRGB hex', () => {
+  assert.equal(cssColor([1, 1, 1]), '#ffffff');
+  assert.equal(cssColor([0, 0, 0]), '#000000');
+  assert.equal(cssColor([0.2159, 0.2159, 0.2159]), '#808080');
+  assert.equal(cssColor([2, -1, 0.5]), '#ff00bc');
+});
+
+test("the golden sun keeps the original sun's hand-tuned look", () => {
+  const look = starLook(GOLDEN_SUN);
+  assert.ok(Math.abs(look.radius - 2600) < 1e-6);
+  assert.deepEqual([look.hot, look.deep, look.gain, look.reach, look.cells], [[1, 0.82, 0.5], [0.8, 0.14, 0.01], 1.9, 6.8, 18]);
+  // A real G8 V of the same numbers is paler: the golden look is the exception, not the rule.
+  const plain = starLook({ ...GOLDEN_SUN, golden: undefined });
+  assert.notDeepEqual(plain.hot, look.hot);
 });

@@ -16,6 +16,7 @@ import {
   type StructureChances,
 } from './megastructures.ts';
 import { makeName, roman } from './names.ts';
+import { GOLDEN_SUN, gameRadius, sampleSystemStar, type Star } from './stars.ts';
 
 /**
  * The star system as plain data. Everything the renderer draws and the game collides with is
@@ -53,8 +54,9 @@ export type Sun = {
   heatRadius: number;
   /** Inside this distance the HUD warns that the temperature is rising. */
   warnRadius: number;
-  color: number;
   name: string;
+  /** What kind of star it is: its class, temperature, radius and luminosity. */
+  star: Star;
 };
 
 export type AsteroidCluster = { id: string; name: string; center: Vec3; radius: number; count: number; seed: number };
@@ -123,6 +125,8 @@ export type World = {
   giga: SystemGiga | null;
 };
 
+/** The galaxy of the title screen and of a first launch (no ?seed= in the address). */
+export const DEFAULT_SEED = 1337;
 export const WORLD_RADIUS = 60000;
 export const ARTIFACT_COUNT = 20;
 export const ASTEROID_VARIANTS = 6;
@@ -193,14 +197,18 @@ export function generateWorld(seed: number, opts: StructureChances = {}): World 
   const root = createRng(seed);
   const nameRng = root.fork('names');
 
-  const sunRadius = 2600;
+  // The star's class comes from its own stream: a white dwarf or a red dwarf in place of the old
+  // yellow sun moves nothing else that does not depend on the star's size. The default galaxy,
+  // the one on the title screen, keeps its golden sun.
+  const star = seed === DEFAULT_SEED ? GOLDEN_SUN : sampleSystemStar(root.fork('star-class'));
+  const sunRadius = gameRadius(star);
   const sun: Sun = {
     position: [0, 0, 0],
     radius: sunRadius,
     heatRadius: sunRadius * 1.9,
     warnRadius: sunRadius * 2.6,
-    color: root.fork('sun').pick([0xffd27a, 0xffe6a8, 0xffb860]),
     name: makeName(nameRng),
+    star,
   };
 
   // --- planets ---------------------------------------------------------------------------

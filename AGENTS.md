@@ -143,8 +143,15 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   the physical values (Mamajek's table, Levesque's scale, the published ranges) apart from
   `starLook()`, which squeezes radii (R^0.4), deepens the pale black-body colours and caps the
   surface brightness so the tone mapping does not turn every hot star white. Change the look
-  there, not the tables. The relic hunt's star still uses its old hand-tuned palette
-  (`createSun` without a look).
+  there, not the tables. Every star, the relic hunt's included, is drawn from its `Star`.
+- **The relic hunt's star is limited by its planets.** `sampleSystemStar()` draws only stars
+  whose warning zone (2.6 radii) keeps the innermost planet (~11 km) outside it: M, K, G, F,
+  cooler A dwarfs and white dwarfs, at most `SYSTEM_STAR_MAX_M`. A giant would swallow the
+  system; letting one in means moving the planets out too.
+- **The default galaxy keeps its golden sun.** `DEFAULT_SEED` (1337, the title screen and a
+  first launch) always gets `GOLDEN_SUN`: a G8 V sized to the old 2600 m, with the original
+  hand-tuned golden palette (`golden: true` in `starLook()`), so its layout and look are exactly
+  what they were before stars had classes.
 - **One light per star would recompile everything.** Three.js rebuilds every material's
   shader when the number of lights changes, so infinite flight drops each star's PointLight
   and moves a single DirectionalLight instead.
@@ -153,8 +160,11 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   and constructor parameter properties.
 - **Changing `generate.ts` moves every galaxy.** Saves are keyed by seed and store relic ids;
   if the relic layout changes, bump the `v1` in `storageKey()` so old saves are not applied to
-  new positions. To add content without moving anything, draw it from a new `root.fork(...)`
-  and place it after the relics, as the debris and the mega- and gigastructures do; `generate.test.ts` compares the layout with
+  new positions. (The star's class did not bump it: it moves only the dare relic, along its
+  own direction, and in a few seeds with big stars a nebula, wreck or station kept out of the
+  larger warning zone; every relic id still means the same relic.) To add content without
+  moving anything, draw it from a new `root.fork(...)` and place it after the relics, as the
+  debris and the mega- and gigastructures do; `generate.test.ts` compares the layout with
   `src/world/fixtures/before-debris.json` and fails if it shifts. Compare floats with a
   tolerance, never by exact hash: `Math.sin` and friends differ in the last bit between a Mac
   and the Linux CI.

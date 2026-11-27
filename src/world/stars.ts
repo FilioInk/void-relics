@@ -34,6 +34,8 @@ export type Star = {
   radius: number;
   /** Luminosity in solar luminosities. */
   luminosity: number;
+  /** Drawn with the hand-tuned golden look of the game's original sun, not its black-body colours. */
+  golden?: true;
 };
 
 export type Rgb = [number, number, number];
@@ -289,7 +291,24 @@ export const RADIUS_POWER = 0.4;
 
 export const gameRadius = (star: Star): number => SUN_RADIUS_M * star.radius ** RADIUS_POWER;
 
+/**
+ * The original sun's look, as it was tuned by hand before stars had classes (tint #ffd27a):
+ * yellower than a real G star, and the title screen's centrepiece.
+ */
+const GOLDEN_LOOK: Omit<StarLook, 'radius'> = {
+  hot: [1, 0.82, 0.5],
+  mid: [1, 0.508344, 0.100385],
+  deep: [0.8, 0.14, 0.01],
+  corona: [1, 0.59724, 0.197309],
+  gain: 1.9,
+  reach: 6.8,
+  cells: 18,
+  light: [1, 0.82224, 0.597309],
+  lightIntensity: 2.6,
+};
+
 export function starLook(star: Star): StarLook {
+  if (star.golden) return { radius: gameRadius(star), ...GOLDEN_LOOK };
   const t = star.teff;
   // Real star colours are pale; deepen them so a red star reads red. Hot stars would turn flat
   // blue under the same treatment, so they get less of it.
@@ -315,6 +334,59 @@ export function starLook(star: Star): StarLook {
     light: mix(saturate(blackbody(t), 1.5), WHITE, 0.35),
     lightIntensity: 2.6 * Math.min(1.35, Math.max(0.7, 1 + 0.06 * Math.log10(star.luminosity))),
   };
+}
+
+// --- the relic hunt's star ----------------------------------------------------------------
+
+/**
+ * The star at the centre of the relic hunt. Its planets are fixed (the innermost orbits at about
+ * 11 km), so only stars small enough to keep that world outside their warning zone (2.6 radii)
+ * qualify: main-sequence M to cooler A stars, and white dwarfs. Giants would swallow the system.
+ */
+export const SYSTEM_FAMILIES: ReadonlyArray<StarFamily> = ['M', 'K', 'G', 'F', 'A', 'whiteDwarf'];
+/** The largest the relic hunt's star may be drawn, metres (A5 V, 1.8 R☉). */
+export const SYSTEM_STAR_MAX_M = 3400;
+
+export function sampleSystemStar(rng: Rng): Star {
+  const total = SYSTEM_FAMILIES.reduce((sum, f) => sum + FAMILY_WEIGHTS[f], 0);
+  let r = rng.next() * total;
+  let family = SYSTEM_FAMILIES[SYSTEM_FAMILIES.length - 1]!;
+  for (const f of SYSTEM_FAMILIES) {
+    r -= FAMILY_WEIGHTS[f];
+    if (r <= 0) {
+      family = f;
+      break;
+    }
+  }
+  // Early A stars are too big for the system; draw again within the class until one fits.
+  for (let k = 0; k < 32; k++) {
+    const star = sampleStar(rng, family);
+    if (gameRadius(star) <= SYSTEM_STAR_MAX_M) return star;
+  }
+  return sampleStar(rng, 'G');
+}
+
+/**
+ * The golden sun the default galaxy has always had, in its original look: a late G dwarf
+ * (G8 V, Mamajek's 5480 K), sized to the 2600 m the relic hunt's star was before stars had
+ * classes, so that galaxy's planets, relics and debris stay exactly where they were.
+ */
+export const GOLDEN_SUN: Star = (() => {
+  const radius = (2600 / SUN_RADIUS_M) ** (1 / RADIUS_POWER);
+  const teff = mainSequenceAt(48).teff;
+  return { family: 'G', spectral: 'G8 V', teff, radius, luminosity: luminosityOf(radius, teff), golden: true };
+})();
+
+/** A linear colour as a CSS hex string (sRGB-encoded), for the map. */
+export function cssColor(c: Rgb): string {
+  const encode = (v: number) => {
+    const x = Math.min(1, Math.max(0, v));
+    const e = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
+    return Math.round(e * 255)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${encode(c[0])}${encode(c[1])}${encode(c[2])}`;
 }
 
 /** A number for a caption: two significant figures below ten, whole numbers above, grouped. */

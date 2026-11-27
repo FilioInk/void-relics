@@ -1,3 +1,5 @@
+import { formatQuantity, type Star, type StarFamily } from './world/stars.ts';
+
 /** Every user-facing string in the game. The game is English-only by decision. */
 
 export const STRINGS = {
@@ -139,3 +141,24 @@ export function format(template: string, vars: Record<string, string | number> =
 export function t(key: Key, vars?: Record<string, string | number>): string {
   return format(STRINGS[key], vars);
 }
+
+const STAR_KIND: Record<StarFamily, Key> = {
+  O: 'starO',
+  B: 'starB',
+  A: 'starA',
+  F: 'starF',
+  G: 'starG',
+  K: 'starK',
+  M: 'starM',
+  redGiant: 'starRedGiant',
+  redSupergiant: 'starRedSupergiant',
+  blueSupergiant: 'starBlueSupergiant',
+  whiteDwarf: 'starWhiteDwarf',
+};
+
+/** What kind of star it is, in words: "Red dwarf". */
+export const starKind = (star: Star): string => t(STAR_KIND[star.family]);
+
+/** A star's line of facts: "Red supergiant · M3 I · 3,580 K · 401 solar radii". */
+export const starFacts = (star: Star): string =>
+  t('starFacts', { kind: starKind(star), type: star.spectral, temp: formatQuantity(star.teff), radius: formatQuantity(star.radius) });

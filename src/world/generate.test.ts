@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { GIGA_CHANCE, MEGA_CHANCE, SYSTEM_SITES, bandDistance, gigaBands, megaBound, megaSpheres } from './megastructures.ts';
-import { ARTIFACT_COUNT, JUNK_VARIANTS, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateJunk, generateWorld, junkNormal, type Vec3 } from './generate.ts';
+import { ARTIFACT_COUNT, DEFAULT_SEED, JUNK_VARIANTS, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateJunk, generateWorld, junkNormal, type Vec3 } from './generate.ts';
+import { GOLDEN_SUN, SYSTEM_FAMILIES, SYSTEM_STAR_MAX_M, gameRadius } from './stars.ts';
 
 const SEEDS = [1, 7, 1337, 2024, 99991, 123456789];
 
@@ -65,10 +66,42 @@ test('exactly one artifact is placed as a dare near the star, inside the heat zo
   assert.equal(hot[0]!.context, 'sun');
 });
 
+test('the default galaxy keeps its golden sun, exactly as big as it always was', () => {
+  const w = generateWorld(DEFAULT_SEED);
+  assert.equal(DEFAULT_SEED, 1337);
+  assert.deepEqual(w.sun.star, GOLDEN_SUN);
+  assert.equal(w.sun.star.family, 'G');
+  assert.ok(Math.abs(w.sun.radius - 2600) < 1e-6, `${w.sun.radius}`);
+  // Other galaxies draw their own.
+  assert.notDeepEqual(generateWorld(DEFAULT_SEED + 1).sun.star, GOLDEN_SUN);
+});
+
+test('every class of star leaves the system playable', () => {
+  const seen = new Set<string>();
+  for (let seed = 1; seed <= 150; seed++) {
+    const w = generateWorld(seed);
+    const { sun } = w;
+    seen.add(sun.star.family);
+    assert.ok(SYSTEM_FAMILIES.includes(sun.star.family), `seed ${seed}: ${sun.star.family}`);
+    assert.equal(sun.radius, gameRadius(sun.star));
+    assert.ok(sun.radius <= SYSTEM_STAR_MAX_M, `seed ${seed}: ${sun.radius.toFixed(0)} m`);
+    for (const p of w.planets) assert.ok(dist(p.position, sun.position) > sun.warnRadius + p.radius, `seed ${seed}: ${p.name} in the heat of a ${sun.star.spectral}`);
+    assert.equal(w.artifacts.length, ARTIFACT_COUNT);
+    const hot = w.artifacts.filter((a) => dist(a.position, sun.position) < sun.heatRadius);
+    assert.deepEqual(hot.map((a) => a.context), ['sun'], `seed ${seed}: one dare by a ${sun.star.spectral}`);
+    for (const a of w.artifacts) assert.ok(dist(a.position, sun.position) > sun.radius * 1.5, `seed ${seed}: ${a.id} inside the star`);
+    assert.ok(dist(w.spawn.position, sun.position) > sun.warnRadius);
+  }
+  assert.deepEqual([...seen].sort(), [...SYSTEM_FAMILIES].sort(), 'every kind of star turns up');
+});
+
 // The layout of three galaxies as it was before stations, satellites and the junk ring existed
-// (positions, sizes, names, the asteroid count and a sample of rocks). Saves point at relics by
-// id, so none of this may move. Numbers are compared to a centimetre: Math.sin and friends
-// differ in the last bit between CPUs, so an exact hash passed on a Mac and failed on CI.
+// (positions, sizes, names, the asteroid count and a sample of rocks), around the yellow sun of
+// 2600 m every system had then. Saves point at relics by id, so none of this may move, except
+// what the star's class moves by design: its own radius, and the dare relic, which is drawn at
+// the same point of a heat zone that now has the star's size. Numbers are compared to a
+// centimetre: Math.sin and friends differ in the last bit between CPUs, so an exact hash passed
+// on a Mac and failed on CI.
 const BEFORE_DEBRIS = JSON.parse(readFileSync(new URL('./fixtures/before-debris.json', import.meta.url), 'utf8')) as Record<
   string,
   { points: number[][]; sizes: number[]; names: string[]; contexts: string[]; rocks: number; rockSample: number[][] }
@@ -79,13 +112,19 @@ const near = (a: number[], b: number[], what: string) => {
   a.forEach((v, i) => assert.ok(Math.abs(v - b[i]!) < 0.01, `${what}[${i}]: ${v} vs ${b[i]}`));
 };
 
-test('adding debris moved nothing that was already in the system', () => {
+/** The heat zone of the 2600 m sun the fixture was recorded with. */
+const FIXTURE_HEAT = 2600 * 1.9;
+
+test("adding debris and the star's class moved nothing else that was already in the system", () => {
   for (const [seed, before] of Object.entries(BEFORE_DEBRIS)) {
     const w = generateWorld(Number(seed));
     const rocks = generateAsteroids(w);
     const points = [w.sun.position, ...w.planets.map((p) => p.position), ...w.clusters.map((c) => c.center), ...w.nebulae.map((n) => n.center), ...w.wrecks.map((x) => x.position), ...w.artifacts.map((a) => a.position), w.spawn.position];
-    near(points.flat(), before.points.flat(), `seed ${seed} positions`);
-    near([w.sun.radius, ...w.planets.map((p) => p.radius), ...w.clusters.map((c) => c.radius), ...w.nebulae.map((n) => n.radius), ...w.wrecks.map((x) => x.size)], before.sizes, `seed ${seed} sizes`);
+    const dare = points.length - 1 - w.artifacts.length + w.artifacts.findIndex((a) => a.context === 'sun');
+    const expected = before.points.map((p, i) => (i === dare ? p.map((v) => (v * w.sun.heatRadius) / FIXTURE_HEAT) : p));
+    near(points.flat(), expected.flat(), `seed ${seed} positions`);
+    assert.equal(w.sun.radius, gameRadius(w.sun.star));
+    near([...w.planets.map((p) => p.radius), ...w.clusters.map((c) => c.radius), ...w.nebulae.map((n) => n.radius), ...w.wrecks.map((x) => x.size)], before.sizes.slice(1), `seed ${seed} sizes`);
     assert.deepEqual([w.sun.name, w.belt.name, ...w.planets.map((p) => p.name), ...w.clusters.map((c) => c.name), ...w.nebulae.map((n) => n.name), ...w.wrecks.map((x) => x.name), ...w.artifacts.map((a) => a.name)], before.names);
     assert.deepEqual(w.artifacts.map((a) => a.context), before.contexts);
     assert.equal(rocks.length, before.rocks, `seed ${seed} rock count`);

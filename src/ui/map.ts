@@ -1,7 +1,8 @@
 import { createRng } from '../core/rng.ts';
-import { t } from '../text.ts';
+import { starKind, t } from '../text.ts';
 import { WORLD_RADIUS, junkNormal, type Asteroid, type World } from '../world/generate.ts';
 import { gigaBands } from '../world/megastructures.ts';
+import { cssColor, starLook } from '../world/stars.ts';
 import { h } from './dom.ts';
 
 /**
@@ -26,6 +27,7 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
 
   // A sample of rocks is enough to draw the belt and fields.
   const rng = createRng(world.seed ^ 0x3a9);
+  const starColors = starLook(world.sun.star);
   const dots = rocks.filter(() => rng.chance(0.35));
 
   {
@@ -33,7 +35,7 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
     close.textContent = t('mapClose');
     legend.replaceChildren();
     const item = (style: string, text: string) => legend.append(h('i', { style }), h('span', { text }));
-    item('background:#ffd27a;border-radius:50%;box-shadow:0 0 8px #ffb547', t('legendStar'));
+    item(`background:${cssColor(starColors.hot)};border-radius:50%;box-shadow:0 0 8px ${cssColor(starColors.mid)}`, t('legendStar'));
     item('background:#7aa8d8;border-radius:50%', t('legendPlanet'));
     item('background:rgba(180,170,160,0.55);border-radius:50%;transform:scale(0.5)', t('legendField'));
     item('background:radial-gradient(#d03cff,transparent 70%)', t('legendNebula'));
@@ -117,11 +119,11 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
         ctx.fillText(p.name, px + pr + 5, py + 4);
       }
 
-      // Star and its heat zone.
+      // Star and its heat zone, in the star's own colours.
       const sg = ctx.createRadialGradient(cx, cy, 0, cx, cy, world.sun.warnRadius * s * 1.6);
-      sg.addColorStop(0, 'rgba(255,240,200,1)');
-      sg.addColorStop(0.25, 'rgba(255,190,90,0.8)');
-      sg.addColorStop(1, 'rgba(255,140,40,0)');
+      sg.addColorStop(0, cssColor(starColors.hot));
+      sg.addColorStop(0.25, `${cssColor(starColors.mid)}cc`);
+      sg.addColorStop(1, `${cssColor(starColors.corona)}00`);
       ctx.fillStyle = sg;
       ctx.beginPath();
       ctx.arc(cx, cy, world.sun.warnRadius * s * 1.6, 0, Math.PI * 2);
@@ -132,6 +134,9 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
       ctx.arc(cx, cy, world.sun.heatRadius * s, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(223,232,244,0.75)';
+      ctx.font = '11px "Exo 2", system-ui, sans-serif';
+      ctx.fillText(`${world.sun.name} · ${starKind(world.sun.star)} ${world.sun.star.spectral}`, cx + world.sun.heatRadius * s + 6, cy + 4);
 
       // The junk ring, seen from above: an ellipse squashed by its tilt.
       if (world.junk) {
