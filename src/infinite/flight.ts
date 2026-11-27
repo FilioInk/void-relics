@@ -85,13 +85,11 @@ export class InfiniteFlight {
   private pause = 3;
   private readonly scratch: Target[] = [];
 
-  // Overlay: nothing on screen but the flight. Place names and the key hint wait behind H; the
-  // full-screen button and the cursor fade out while the pointer rests.
+  // Overlay: the flight, the name of each new place as it fades in (H hides them), and the
+  // full-screen button, which fades out with the cursor while the pointer rests.
   private readonly caption: HTMLElement;
-  private readonly hint: HTMLElement;
   private readonly fullscreen: FullscreenButton;
-  private hintsOn = false;
-  private hintTimer = 0;
+  private namesOn = true;
   private idleTimer = 0;
   private readonly wake = (): void => {
     this.overlay.classList.remove('idle');
@@ -136,9 +134,8 @@ export class InfiniteFlight {
     this.scene.add(this.fx.group);
 
     this.caption = h('div', { class: 'inf-caption' });
-    this.hint = h('div', { class: 'inf-hint', text: t('infiniteHint') });
     this.fullscreen = createFullscreenButton('inf-fs');
-    this.overlay = h('div', { class: 'inf quiet' }, this.caption, this.hint, this.fullscreen.el);
+    this.overlay = h('div', { class: 'inf' }, this.caption, this.fullscreen.el);
   }
 
   /** Builds the first stretches at once and compiles their shaders, so the flight starts smooth. */
@@ -159,13 +156,10 @@ export class InfiniteFlight {
     this.setMode(CAMERA_ORDER[this.modeIndex]!);
   }
 
-  /** H: place names and the key hint, off by default. The hint fades again after a while. */
-  toggleHints(): void {
-    this.hintsOn = !this.hintsOn;
-    this.overlay.classList.toggle('quiet', !this.hintsOn);
-    window.clearTimeout(this.hintTimer);
-    this.hint.classList.remove('fade');
-    if (this.hintsOn) this.hintTimer = window.setTimeout(() => this.hint.classList.add('fade'), 7000);
+  /** H: hides the place names for a picture with nothing on it, or brings them back. */
+  toggleNames(): void {
+    this.namesOn = !this.namesOn;
+    this.overlay.classList.toggle('quiet', !this.namesOn);
   }
 
   /** F, from a key press: the browser allows full screen only from a user gesture. */
@@ -179,7 +173,6 @@ export class InfiniteFlight {
     window.removeEventListener('pointermove', this.wake);
     window.removeEventListener('pointerdown', this.wake);
     window.clearTimeout(this.idleTimer);
-    window.clearTimeout(this.hintTimer);
     document.body.classList.remove('cursor-idle');
     this.fullscreen.dispose();
     this.overlay.remove();

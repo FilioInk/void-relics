@@ -440,7 +440,7 @@ export class Game {
         if (e.repeat) return;
         if (e.code === 'Escape') this.exitInfinite();
         else if (e.code === 'KeyC') this.infinite?.nextCamera();
-        else if (e.code === 'KeyH') this.infinite?.toggleHints();
+        else if (e.code === 'KeyH') this.infinite?.toggleNames();
         else if (e.code === 'KeyF') this.infinite?.toggleFullscreen();
         return;
       }
