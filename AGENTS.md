@@ -6,7 +6,8 @@ A browser space-flight exploration game built on three.js. The player flies a sm
 through a procedurally generated star system (star, six planets, an asteroid belt and fields,
 coloured nebulae, derelict wrecks) looking for 20 alien relics. Everything — the world, the
 textures, the music and sound — is generated at runtime from one seed; the game ships no
-image or audio files. It is a static site: Vite builds it, GitHub Pages serves it.
+image or audio files except the app icons, which `scripts/icons.mjs` draws. It is a static
+site: Vite builds it, GitHub Pages serves it, and it installs as an app (a PWA).
 
 ## Run it
 
@@ -14,7 +15,8 @@ image or audio files. It is a static site: Vite builds it, GitHub Pages serves i
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # static site in dist/
-npm run preview      # serve dist/ locally
+npm run preview      # serve dist/ locally — the service worker and installing only work here
+node scripts/icons.mjs   # redraw public/icons/ after changing the mark
 ```
 
 URL parameters: `?seed=<integer>` picks the galaxy (default 1337), `?debug=1` exposes
@@ -56,8 +58,9 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - `src/infinite/` — infinite flight: `director.ts` (the endless path and what each 6 km segment
   holds, pure and tested), `stream.ts` (builds a segment with the regular `src/render/`
   builders, a few things per frame, and frees it behind the ship), `flight.ts` (autopilot,
-  cameras, origin shifts, autopilot guns, place-name captions, the full-screen button).
-  `src/ui/fullscreen.ts` wraps the Fullscreen API with the Safari fallback.
+  cameras, origin shifts, autopilot guns, place-name captions, the music and full-screen
+  buttons). `src/ui/fullscreen.ts` wraps the Fullscreen API with the Safari fallback;
+  `src/ui/wakeLock.ts` keeps the screen on while the game is full screen or the installed app.
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
   wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
   `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
@@ -76,8 +79,11 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
   which also runs in an `OfflineAudioContext` to render a listening demo.
 - `src/ui/` — HUD, system map, menus, touch controls (`touchControls.ts`: the stick and buttons;
-  their maths, finger tracking and the thrust latch are pure, in `src/game/touch.ts`).
-  `src/text.ts` — every user-facing string.
+  their maths, finger tracking and the thrust latch are pure, in `src/game/touch.ts`),
+  `install.ts` (the menu's Install app: the browser's install event, the steps per browser,
+  the service worker's registration). `src/text.ts` — every user-facing string.
+- `public/` — copied into `dist/` as is: `manifest.webmanifest`, `sw.js` (the service worker),
+  `icons/` (drawn by `scripts/icons.mjs`).
 - `.github/workflows/` — `ci.yml` runs verify on every PR; `deploy.yml` publishes to Pages.
 
 ## Things that will bite you
@@ -133,3 +139,15 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   translations or a language picker; new strings go into `src/text.ts` in English.
 - The only network request at runtime is the Exo 2 font from Google Fonts; the game falls back
   to system fonts without it.
+- **The service worker runs in the built game only** (`import.meta.env.PROD`), so `npm run dev`
+  never caches anything. To check installing or offline play, `npm run build && npm run
+  preview`; afterwards unregister it in the browser (it keeps serving `localhost:<port>`, and
+  its hashed files come from its cache). It fetches the page network first, so a deploy is live
+  on the next visit online; `assets/` are cache first, and it drops the hashed files the page no
+  longer names. It reads the asset names out of `index.html`, so a lazily loaded chunk would be
+  fetched online but not kept for offline play until it is listed there too.
+- **Paths are relative** (`base: './'`): the manifest, icons and service worker sit next to
+  `index.html`, and the worker's scope is wherever the page is served from (`/void-relics/` on
+  Pages).
+- **The desktop app's browser pane** never fires `beforeinstallprompt` and denies the Wake Lock
+  API, so it shows the install steps card and never holds the lock. Real Chrome does both.

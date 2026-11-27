@@ -118,6 +118,7 @@ html, body {
 #ui .inf-btn { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; color: var(--ink); background: rgba(6, 10, 20, 0.45); border: 1px solid var(--faint); border-radius: 6px; cursor: pointer; opacity: 0.7; pointer-events: auto; transition: opacity 0.2s, border-color 0.2s, color 0.2s; }
 #ui .inf-btn:hover, #ui .inf-btn:focus-visible { opacity: 1; color: var(--accent); border-color: var(--accent); outline: none; }
 #ui .inf-btn[hidden] { display: none; }
+#ui .inf-music.off { color: var(--dim); }
 #ui .inf.idle .inf-btn { opacity: 0; pointer-events: none; transition: opacity 0.8s; }
 /* Camera and back: taps stand in for C and Esc on a touch device. */
 #ui .inf-touch { display: none; }
@@ -158,7 +159,7 @@ button { font: inherit; cursor: pointer; }
 .btn.small { padding: 7px 14px; font-size: 12px; }
 
 /* Start menu: the name across the whole screen in thin capitals, two ways to play, and the
-   settings one click further in. The scene keeps drifting behind it. */
+   settings and the install steps one click further in. The scene keeps drifting behind it. */
 .overlay.menu { flex-direction: column; justify-content: space-between; padding: 11vh 3vw 9vh; background: linear-gradient(rgba(4, 6, 12, 0.6), rgba(4, 6, 12, 0.08) 38%, rgba(4, 6, 12, 0.08) 62%, rgba(4, 6, 12, 0.7)); }
 .menu-group { display: flex; flex-direction: column; align-items: center; gap: clamp(12px, 2.6vh, 24px); width: 100%; }
 .menu-title { width: 100%; margin: 0; line-height: 0; }
@@ -171,6 +172,10 @@ button { font: inherit; cursor: pointer; }
 .menu-buttons .btn:hover, .menu-buttons .btn:focus-visible { filter: none; color: #fff; background: rgba(255, 255, 255, 0.08); border-color: #fff; outline: none; }
 .menu-link { padding: 8px 14px; color: var(--dim); background: none; border: 0; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; }
 .menu-link:hover, .menu-link:focus-visible { color: var(--accent); outline: none; }
+.menu-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; }
+.install-steps { margin: 0; padding: 0 0 0 22px; color: var(--ink); font-size: 15px; line-height: 1.6; }
+.install-steps li + li { margin-top: 6px; }
+.install-steps li::marker { color: var(--accent); }
 
 .big-center { text-align: center; }
 .big-center h2 { font-size: 34px; letter-spacing: 0.2em; }
