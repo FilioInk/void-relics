@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { controlKeys, playLabel } from './screens.ts';
+import { controlKeys, pauseButtons, playLabel } from './screens.ts';
 import { t } from '../text.ts';
 
 test('the main game button names the hunt, and shows the score once relics are found', () => {
@@ -16,4 +16,17 @@ test('a touch device lists the on-screen controls, not the keys', () => {
   for (const name of ['Thrust', 'Brake', 'Boost', 'Fire', 'steer', 'map', 'pause', 'Infinite flight']) {
     assert.ok(touch.some((s) => s.includes(name)), `no line mentions ${name}`);
   }
+});
+
+test('the pause card leads back to the main menu, on a keyboard and on a touch screen', () => {
+  for (const touch of [false, true]) {
+    const buttons = pauseButtons(touch);
+    assert.equal(buttons[0]?.action, 'resume', 'carrying on stays the primary button');
+    assert.deepEqual(
+      buttons.filter((b) => b.action === 'menu').map((b) => t(b.label)),
+      ['Main menu'],
+    );
+  }
+  assert.equal(t(pauseButtons(true)[0]!.label), 'Tap to continue');
+  assert.equal(t(pauseButtons(false)[0]!.label), 'Click to continue');
 });
