@@ -1,4 +1,20 @@
 import { createRng, type Rng } from '../core/rng.ts';
+import {
+  GIGA_CHANCE,
+  GIGA_KINDS,
+  MEGA_CHANCE,
+  MEGA_KINDS,
+  SYSTEM_SITES,
+  bandDistance,
+  chance,
+  gigaBands,
+  megaBound,
+  megaSpheres,
+  type Band,
+  type Gigastructure,
+  type Megastructure,
+  type StructureChances,
+} from './megastructures.ts';
 import { makeName, roman } from './names.ts';
 
 /**
@@ -84,6 +100,11 @@ export type JunkRing = { id: string; planetId: string; center: Vec3; inner: numb
 /** One loose bit of junk, for the renderer and the collision grid alike. */
 export type Junk = { position: Vec3; size: number; variant: number; rotation: Vec3; shade: number };
 
+/** A megastructure parked in the system: a ring gate, a habitat or a patch of Dyson lattice. */
+export type SystemMega = { id: string; name: string; shape: Megastructure };
+/** The system's gigastructure: Dyson rings around its star, or a ringworld around all of it. */
+export type SystemGiga = { id: string; name: string; shape: Gigastructure };
+
 export type World = {
   seed: number;
   radius: number;
@@ -98,6 +119,8 @@ export type World = {
   stations: Station[];
   graveyards: Graveyard[];
   junk: JunkRing | null;
+  megastructures: SystemMega[];
+  giga: SystemGiga | null;
 };
 
 export const WORLD_RADIUS = 60000;
@@ -165,7 +188,8 @@ function insideAnyPlanet(p: Vec3, planets: Planet[], margin: number): boolean {
   return planets.some((pl) => dist(p, pl.position) < pl.radius * (pl.ring ? 2.4 : 1) + margin);
 }
 
-export function generateWorld(seed: number): World {
+/** `opts` overrides the shares of sites with a mega- or gigastructure (the URL's ?mega= / ?giga=). */
+export function generateWorld(seed: number, opts: StructureChances = {}): World {
   const root = createRng(seed);
   const nameRng = root.fork('names');
 
@@ -336,11 +360,14 @@ export function generateWorld(seed: number): World {
   }
 
   const base = { seed, radius: WORLD_RADIUS, sun, planets, belt, clusters, nebulae, wrecks, artifacts: placed, spawn: { position: spawn, lookAt: [0, 0, 0] as Vec3 } };
-  // Debris comes last and from its own stream, so adding it moved nothing that was already there.
-  return { ...base, ...placeDebris(base, root.fork('debris'), nameRng) };
+  // Debris, then the mega- and gigastructures, come last and each from its own stream, so
+  // adding them moved nothing that was already there.
+  const withDebris = { ...base, ...placeDebris(base, root.fork('debris'), nameRng) };
+  return { ...withDebris, ...placeStructures(withDebris, root.fork('structures'), nameRng, opts) };
 }
 
-type BaseWorld = Omit<World, 'stations' | 'graveyards' | 'junk'>;
+type BaseWorld = Omit<World, 'stations' | 'graveyards' | 'junk' | 'megastructures' | 'giga'>;
+type DebrisWorld = Omit<World, 'megastructures' | 'giga'>;
 
 /** Outside every asteroid field and the belt, where no rock can be. */
 function clearOfRocks(p: Vec3, margin: number, w: BaseWorld): boolean {
@@ -400,6 +427,102 @@ function placeDebris(w: BaseWorld, rng: Rng, nameRng: Rng): Pick<World, 'station
     : null;
 
   return { stations, graveyards, junk };
+}
+
+// --- mega- and gigastructures ---------------------------------------------------------------
+
+/**
+ * The system has SYSTEM_SITES sites, and each rolls like a stretch of infinite flight: a
+ * megastructure with the mega chance, a gigastructure with the giga chance (one at most: a
+ * star wears only one). Each roll comes from its own stream, so a higher chance only adds.
+ */
+function placeStructures(w: DebrisWorld, rng: Rng, nameRng: Rng, opts: StructureChances): Pick<World, 'megastructures' | 'giga'> {
+  const megaChance = chance(opts.megaChance, MEGA_CHANCE);
+  const gigaChance = chance(opts.gigaChance, GIGA_CHANCE);
+  const sites = Array.from({ length: SYSTEM_SITES }, (_, k) => k);
+  const gigaShape = sites.some((k) => rng.fork(`giga-${k}`).next() < gigaChance) ? systemGiga(w, rng.fork('giga-shape')) : null;
+  const giga: SystemGiga | null = gigaShape ? { id: 'giga', name: makeName(nameRng), shape: gigaShape } : null;
+  const bands = gigaShape ? gigaBands(gigaShape) : [];
+  const megastructures: SystemMega[] = [];
+  for (const k of sites) {
+    if (rng.fork(`mega-${k}`).next() >= megaChance) continue;
+    const shape = systemMega(w, rng.fork(`mega-place-${k}`), megastructures, bands);
+    if (shape) megastructures.push({ id: `mega-${megastructures.length}`, name: makeName(nameRng), shape });
+  }
+  return { megastructures, giga };
+}
+
+/** Clear of every solid thing in the system by `margin` beyond its own reach. */
+function clearOfSystem(p: Vec3, margin: number, w: DebrisWorld): boolean {
+  return (
+    !insideAnyPlanet(p, w.planets, margin + 600) &&
+    w.wrecks.every((x) => dist(p, x.position) > x.size * 3 + margin + 300) &&
+    w.artifacts.every((a) => dist(p, a.position) > margin + 500) &&
+    w.stations.every((s) => dist(p, s.position) > s.size + margin + 500) &&
+    w.graveyards.every((g) => dist(p, g.center) > g.radius * 1.3 + margin + 500) &&
+    w.clusters.every((c) => dist(p, c.center) > c.radius + margin + 400) &&
+    dist(p, w.spawn.position) > margin + 3000
+  );
+}
+
+/**
+ * Dyson rings around the star, between its heat and the first planet, tilted until they miss
+ * everything near it; or (if they cannot, or by the roll) a ringworld around the whole system,
+ * past its edge, tilted so it climbs across the sky.
+ */
+function systemGiga(w: DebrisWorld, rng: Rng): Gigastructure {
+  const sun = w.sun.position;
+  const kind = rng.pick(GIGA_KINDS);
+  if (kind === 'armillary') {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const shape: Gigastructure = { type: 'armillary', center: sun, inner: rng.range(5300, 5600), outer: rng.range(6300, 6700), rings: rng.int(3, 5), seed: rng.int(1, 1e9) };
+      const bands = gigaBands(shape);
+      const near = [...w.artifacts.map((a) => ({ p: a.position, r: 500 })), ...w.wrecks.map((x) => ({ p: x.position, r: x.size * 3 + 300 })), ...w.stations.map((s) => ({ p: s.position, r: s.size + 500 })), ...w.graveyards.map((g) => ({ p: g.center, r: g.radius * 1.3 + 500 })), ...w.planets.map((p) => ({ p: p.position, r: p.radius * (p.ring ? 2.4 : 1) + 600 }))];
+      if (bands.every((b) => near.every((x) => bandDistance(x.p, b) > x.r + b.width / 2))) return shape;
+    }
+  }
+  const tilt = rng.range(0.3, 0.6);
+  const yaw = rng.range(0, Math.PI * 2);
+  const axis: Vec3 = [Math.sin(tilt) * Math.cos(yaw), Math.cos(tilt), Math.sin(tilt) * Math.sin(yaw)];
+  const up = normalize(cross(axis, [Math.cos(yaw + Math.PI / 2), 0, Math.sin(yaw + Math.PI / 2)]));
+  return { type: 'ringworld', center: sun, axis, up, radius: rng.range(72000, 84000), width: rng.range(5000, 7500), seed: rng.int(1, 1e9) };
+}
+
+/** A megastructure somewhere in open space, clear of everything, or null if none fits. */
+function systemMega(w: DebrisWorld, rng: Rng, placed: readonly SystemMega[], bands: readonly Band[]): Megastructure | null {
+  const sun = w.sun.position;
+  const kind = rng.pick(MEGA_KINDS);
+  const seed = rng.int(1, 1e9);
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const p = onOrbit(rng, rng.range(13000, 55000), 3000);
+    let shape: Megastructure;
+    if (kind === 'gate') {
+      const a = rng.range(0, Math.PI * 2);
+      shape = { type: 'gate', center: p, axis: [Math.cos(a), rng.range(-0.15, 0.15), Math.sin(a)], up: [0, 1, 0], radius: rng.range(650, 1000), seed };
+    } else if (kind === 'habitat') {
+      const axis = normalize([rng.range(-1, 1), rng.range(-0.4, 0.4), rng.range(-1, 1)]);
+      const up = normalize(cross(cross(axis, [0, 1, 0]), axis));
+      shape = { type: 'habitat', center: p, axis, up: Number.isFinite(up[0]) ? up : [1, 0, 0], radius: rng.range(450, 650), length: rng.range(2200, 2800), seed };
+    } else {
+      // A patch of a Dyson swarm: a piece of a sphere around the star, collectors to the light.
+      const facing = normalize([sun[0] - p[0], sun[1] - p[1], sun[2] - p[2]]);
+      const along = normalize(cross([0, 1, 0], facing));
+      shape = { type: 'lattice', center: p, facing, along, curve: dist(p, sun), width: rng.range(1300, 1750), height: rng.range(800, 1200), cell: rng.range(95, 125), seed };
+    }
+    const bound = megaBound(shape);
+    if (placed.some((m) => dist(m.shape.center, p) < megaBound(m.shape) + bound + 1000)) continue;
+    const ok = megaSpheres(shape).every(
+      ({ at, r }) =>
+        dist(at, sun) > w.sun.warnRadius + r + 1500 &&
+        Math.hypot(at[0], at[2]) < WORLD_RADIUS * 0.97 &&
+        clearOfRocks(at, r + 400, w) &&
+        clearOfSystem(at, r, w) &&
+        (!w.junk || dist(at, w.junk.center) > w.junk.outer + r + 300) &&
+        bands.every((b) => bandDistance(at, b) > r + 1500),
+    );
+    if (ok) return shape;
+  }
+  return null;
 }
 
 /** The plane of the junk ring: unit normal, from its tilt and yaw. */

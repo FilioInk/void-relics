@@ -10,6 +10,7 @@ import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
 import { createCombatFx, type CombatFx, type LootItem } from '../render/combat.ts';
 import { createDebris, type DebrisView } from '../render/debris.ts';
 import { createGpuTimer, type GpuTimer } from '../render/gpuTimer.ts';
+import { createGigastructure, createMegastructure, type GigaView, type MegaView } from '../render/megastructures.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { createNebulae, type NebulaView } from '../render/nebula.ts';
 import { createPlanet, type PlanetView } from '../render/planets.ts';
@@ -25,16 +26,17 @@ import { PerfStats } from '../ui/perfStats.ts';
 import { createScreens } from '../ui/screens.ts';
 import { createTouchControls, type TouchControls } from '../ui/touchControls.ts';
 import { generateAsteroids, generateJunk, generateWorld, type Asteroid, type World } from '../world/generate.ts';
+import { gigaBands, megaColliders, type Band, type StructureChances } from '../world/megastructures.ts';
 import { nebulaDensityAt, regionAt, scanRange, type Region } from '../world/regions.ts';
 import { aimOf, moveCursor, steerRadius, type Cursor } from './aim.ts';
 import { BENCH_SPOTS, benchSpot, type BenchSpotName } from './benchSpots.ts';
 import { stepExposure, targetExposure } from './exposure.ts';
 import { approach, createFlightState, forwardOf, stepFlight, type FlightInput, type FlightState } from './flight.ts';
-import { collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull, type Hull } from './hazards.ts';
+import { collideBand, collideDisc, collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull, type Hull } from './hazards.ts';
 import { PICKUP_RADIUS, collect, formatTime, isComplete, markBroken, parseProgress, storageKey, type Progress } from './progress.ts';
 import { SETTINGS_KEY, writeStore, readStore, type Settings } from './settings.ts';
 import { SpatialHash } from './spatialHash.ts';
-import { SEALED_CONTEXTS, SHELL_RADIUS, lootOf, segmentSphere, stepBolts, targetHp, targetId, type Bolt, type BoltHit, type Target } from './targets.ts';
+import { SEALED_CONTEXTS, SHELL_RADIUS, lootOf, segmentBand, segmentDisc, segmentSphere, stepBolts, targetHp, targetId, type Bolt, type BoltHit, type Target } from './targets.ts';
 import { cursorOf, isTouchFirst } from './touch.ts';
 import { WEAPON, createWeapon, stepWeapon } from './weapons.ts';
 
@@ -45,6 +47,10 @@ const REGION_KEYS: Record<Region['kind'], Key> = {
   wreck: 'regionWreck',
   station: 'regionStation',
   graveyard: 'regionGraveyard',
+  gate: 'regionGate',
+  habitat: 'regionHabitat',
+  lattice: 'regionLattice',
+  ringworld: 'regionRingworld',
   junk: 'regionJunk',
   nebula: 'regionNebula',
   field: 'regionField',
@@ -61,8 +67,8 @@ export class Game {
   private readonly bloom: BloomPass;
   private readonly renderPass: RenderPass;
   private infinite: InfiniteFlight | null = null;
-  /** `?mega=`: the share of infinite-flight stretches with a megastructure, or the default. */
-  private readonly megaChance: number | undefined;
+  /** `?mega=` / `?giga=`: the shares of places with a mega- or gigastructure, or the defaults. */
+  private readonly chances: StructureChances;
   private readonly scene = new THREE.Scene();
   // Fog lives on the scene for the whole session and is only thinned to zero outside nebulae:
   // swapping it for null at a nebula edge made every material pick a new shader (a hitch).
@@ -80,6 +86,11 @@ export class Game {
   private nebulae!: NebulaView;
   private wrecks!: WreckView;
   private debris!: DebrisView;
+  /** The system's megastructures and its gigastructure, if it has them. */
+  private structures: MegaView[] = [];
+  private giga: GigaView | null = null;
+  /** The gigastructure's solid bands: too big for the collision grid, so checked on their own. */
+  private bands: Band[] = [];
   private asteroids!: AsteroidView;
   private rocks: Asteroid[] = [];
   private fx!: CombatFx;
@@ -146,9 +157,9 @@ export class Game {
   private stillTime: number | null = null;
   private captureNext: ((dataUrl: string) => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean, perf = false, megaChance?: number) {
+  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean, perf = false, chances: StructureChances = {}) {
     this.ui = ui;
-    this.megaChance = megaChance;
+    this.chances = chances;
     this.seed = seed;
     this.settings = settings;
     this.debug = debug;
@@ -229,7 +240,7 @@ export class Game {
   /** Builds the whole system. Split across frames so the loading text gets painted first. */
   async build(): Promise<void> {
     await nextFrame();
-    const world = generateWorld(this.seed);
+    const world = generateWorld(this.seed, this.chances);
     this.world = world;
     const rocks = generateAsteroids(world);
 
@@ -263,6 +274,18 @@ export class Game {
     this.scene.add(this.wrecks.group);
     this.debris = createDebris(world.stations, world.graveyards, generateJunk(world), this.sky.background, this.seed);
     this.scene.add(this.debris.group);
+    for (const m of world.megastructures) {
+      const view = createMegastructure(m.shape, this.sky.background);
+      view.group.position.set(...m.shape.center);
+      this.scene.add(view.group);
+      this.structures.push(view);
+    }
+    if (world.giga) {
+      this.giga = createGigastructure(world.giga.shape, this.sky.background);
+      this.giga.group.position.set(...world.giga.shape.center);
+      this.scene.add(this.giga.group);
+      this.bands = gigaBands(world.giga.shape);
+    }
     await nextFrame();
 
     this.nebulae = createNebulae(world.nebulae, this.seed);
@@ -286,6 +309,7 @@ export class Game {
     const broken = new Set(this.progress.broken);
     const colliders: Target[] = rocks.map((r, i) => ({ position: r.position, radius: r.radius * 0.92, kind: 'rock', ref: i }));
     colliders.push(...this.wrecks.colliders, ...this.debris.colliders);
+    for (const m of world.megastructures) colliders.push(...megaColliders(m.shape));
     world.artifacts.forEach((a, i) => {
       if (!SEALED_CONTEXTS.has(a.context) || this.progress.found.includes(a.id) || broken.has(targetId('shell', i))) return;
       this.sealed.add(a.id);
@@ -378,7 +402,8 @@ export class Game {
       onBack: () => this.exitInfinite(),
       music: this.settings.music,
       onMusic: () => this.toggleMusic(),
-      megaChance: this.megaChance,
+      megaChance: this.chances.megaChance,
+      gigaChance: this.chances.gigaChance,
     });
     this.ui.append(this.infinite.overlay);
     // The ?perf=1 readout stays out of the picture here; __vr.perf() still reads it.
@@ -666,9 +691,12 @@ export class Game {
       if (this.state === 'dead') continue;
       const p = f.position;
       for (const c of this.grid.query(p.x, p.y, p.z, SHIP_RADIUS + 20, near)) {
-        const hit = collideSphere(p, f.velocity, SHIP_RADIUS, tmpV.set(...c.position), c.radius);
+        const hit = c.normal
+          ? collideDisc(p, f.velocity, SHIP_RADIUS, c.position, c.normal, c.radius, c.thick ?? 4)
+          : collideSphere(p, f.velocity, SHIP_RADIUS, tmpV.set(...c.position), c.radius);
         hardestHit = Math.max(hardestHit, hit);
       }
+      for (const b of this.bands) hardestHit = Math.max(hardestHit, collideBand(p, f.velocity, SHIP_RADIUS, b));
       for (const pl of world.planets) {
         const hit = collideSphere(p, f.velocity, SHIP_RADIUS, tmpV.set(...pl.position), pl.radius, 0.2);
         hardestHit = Math.max(hardestHit, hit * 2);
@@ -808,8 +836,14 @@ export class Game {
     let best: { t: number; target: Target | null } | null = null;
     const half = Math.hypot(bx - ax, by - ay, bz - az) / 2 + WEAPON.hitRadius;
     for (const c of this.grid.query((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, half, this.hitScratch)) {
-      const t = segmentSphere(ax, ay, az, bx, by, bz, c.position[0], c.position[1], c.position[2], c.radius + WEAPON.hitRadius);
+      const t = c.normal
+        ? segmentDisc([ax, ay, az], [bx, by, bz], c.position, c.normal, c.radius + WEAPON.hitRadius)
+        : segmentSphere(ax, ay, az, bx, by, bz, c.position[0], c.position[1], c.position[2], c.radius + WEAPON.hitRadius);
       if (t !== null && (!best || t < best.t)) best = { t, target: c };
+    }
+    for (const b of this.bands) {
+      const t = segmentBand([ax, ay, az], [bx, by, bz], b.center, b.axis, b.radius, b.width);
+      if (t !== null && (!best || t < best.t)) best = { t, target: null };
     }
     for (const p of this.world.planets) {
       const t = segmentSphere(ax, ay, az, bx, by, bz, p.position[0], p.position[1], p.position[2], p.radius);
@@ -1016,6 +1050,8 @@ export class Game {
     this.nebulae.update(t, dt);
     this.wrecks.update(t);
     this.debris.update(t, dt);
+    for (const s of this.structures) s.update(t, dt);
+    this.giga?.update(t, dt);
     this.fx.update(dt, t);
     this.artifacts.update(t, dt, window.innerHeight * this.renderer.getPixelRatio());
     this.ship.root.position.copy(f.position);

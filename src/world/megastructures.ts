@@ -2,13 +2,39 @@ import { createRng } from '../core/rng.ts';
 import type { Vec3 } from './generate.ts';
 
 /**
- * Megastructures, as plain data: a ring gate the flight path threads, an O'Neill habitat
- * cylinder turning beside it, and a torn patch of a Dyson lattice curving overhead.
+ * Megastructures and gigastructures, as plain data.
  *
- * The proportions here are shared by the director (which keeps every part of them out of the
- * flight corridor, through `megaSpheres`) and by the builders in `src/render/megastructures.ts`
- * (which draw exactly these shapes), so what is checked is what is drawn.
+ * Megastructures are kilometres across: a ring gate, an O'Neill habitat cylinder, a torn patch
+ * of a Dyson lattice. Gigastructures are hundreds of kilometres across and rarer: a ringworld
+ * (a habitable band around its own star) and Dyson rings (tilted rings of collectors wrapped
+ * around a star).
+ *
+ * The proportions here are shared by the placement code (the infinite-flight director and the
+ * star system, which keep them clear of everything through `megaSpheres` / `gigaSpheres` and
+ * `bandDistance`), by the collisions (`megaColliders`, `gigaBands`) and by the builders in
+ * `src/render/megastructures.ts`, so what is checked is what is drawn.
  */
+
+/**
+ * The share of places that hold a megastructure: each infinite-flight stretch and each site of
+ * a star system rolls for it on its own. `?mega=<percent>` in the URL overrides it.
+ */
+export const MEGA_CHANCE = 0.1;
+/**
+ * The same for gigastructures: far rarer. A place may hold both (a gigastructure stands tens of
+ * kilometres off). `?giga=<percent>` in the URL overrides it.
+ */
+export const GIGA_CHANCE = 0.02;
+/** A star system has this many sites, each rolling like a stretch of infinite flight. */
+export const SYSTEM_SITES = 20;
+
+/** Chances that override the defaults (from the URL), each 0..1. */
+export type StructureChances = { megaChance?: number; gigaChance?: number };
+
+/** A chance clamped to 0..1, or the fallback when it is missing or not a number. */
+export function chance(p: number | undefined, fallback: number): number {
+  return p === undefined || !Number.isFinite(p) ? fallback : Math.min(1, Math.max(0, p));
+}
 
 export type MegaKind = 'gate' | 'habitat' | 'lattice';
 export const MEGA_KINDS: readonly MegaKind[] = ['gate', 'habitat', 'lattice'];
@@ -30,8 +56,13 @@ export const GATE = { blocks: 48, thick: 0.11, depth: 0.24, fin: 0.2, pylon: 2.2
  * Habitat proportions: mirrors hinged at one end and opened by `mirrorTilt` radians,
  * `mirrorLength` of the cylinder long; end caps `cap` radii deep with a spindle `spindle`
  * radii beyond; at the other end an agricultural ring `crown` radii out, its tube `tube` thick.
+ * The hull and mirrors stand still (so the collisions match); only the crown turns.
  */
 export const HABITAT = { mirrorTilt: 0.3, mirrorLength: 0.75, cap: 0.3, spindle: 0.3, crown: 1.5, tube: 0.07 } as const;
+/** The crown's distance from the far (-z) end of the habitat, in radii. */
+export const CROWN_INSET = 0.15;
+/** Where the habitat's mirrors hang: over the window strips, sixths 1, 3 and 5 of the hull. */
+export const habitatMirrorAngles = (): number[] => [1, 3, 5].map((s) => (s * Math.PI) / 3 + Math.PI / 6 - Math.PI / 2);
 
 // --- vectors -------------------------------------------------------------------------------
 
@@ -157,12 +188,163 @@ export function latticePanels(t: Lattice): LatticePanel[] {
 }
 
 /**
- * `?mega=<percent>` from the URL: the share of infinite-flight stretches that hold a
- * megastructure, 0 to 100. Anything else (or nothing) keeps the default.
+ * `?mega=<percent>` or `?giga=<percent>` from the URL: a share of places, 0 to 100, as 0..1.
+ * Anything else (or nothing) keeps the default.
  */
-export function parseMegaPercent(raw: string | null): number | undefined {
+export function parsePercent(raw: string | null): number | undefined {
   if (raw === null || raw.trim() === '') return undefined;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0 || n > 100) return undefined;
   return n / 100;
+}
+
+// --- colliders for the star system -----------------------------------------------------------
+
+/** A solid sphere, or with `normal` a thin disc of that radius and `thick` thickness. */
+export type Collider = { position: Vec3; radius: number; normal?: Vec3; thick?: number };
+
+/** Local frame coordinates (x, y, z) of a gate or habitat, to world. */
+const toWorld = (center: Vec3, f: { x: Vec3; y: Vec3; z: Vec3 }, x: number, y: number, z: number): Vec3 =>
+  add(center, add(add(scale(f.x, x), scale(f.y, y)), scale(f.z, z)));
+
+/**
+ * What the ship bumps into and the lasers hit: tighter than `megaSpheres` (which only have to
+ * hold the shape), so the ship meets the hull where it is drawn.
+ */
+export function megaColliders(m: Megastructure): Collider[] {
+  const out: Collider[] = [];
+  switch (m.type) {
+    case 'gate': {
+      const f = megaFrame(m.axis, m.up);
+      const R = m.radius;
+      for (let k = 0; k < GATE.blocks; k++) {
+        const a = ((k + 0.5) / GATE.blocks) * Math.PI * 2;
+        out.push({ position: toWorld(m.center, f, Math.cos(a) * R, Math.sin(a) * R, 0), radius: R * 0.13 });
+        if (k % (GATE.blocks / 4) === 0) out.push({ position: toWorld(m.center, f, Math.cos(a) * R * 1.07, Math.sin(a) * R * 1.07, 0), radius: R * 0.17 });
+      }
+      return out;
+    }
+    case 'habitat': {
+      const f = megaFrame(m.axis, m.up);
+      const R = m.radius;
+      const L = m.length;
+      // The hull: spheres of the hull's radius along the axis, close enough that it stays smooth.
+      const end = L / 2 - R * 0.3;
+      const n = Math.ceil((2 * end) / (R * 0.4));
+      for (let k = 0; k <= n; k++) out.push({ position: toWorld(m.center, f, 0, 0, -end + (2 * end * k) / n), radius: R });
+      for (const side of [1, -1]) {
+        out.push({ position: toWorld(m.center, f, 0, 0, side * (L / 2 + R * 0.05)), radius: R * 0.5 });
+        out.push({ position: toWorld(m.center, f, 0, 0, side * (L / 2 + R * (HABITAT.cap + HABITAT.spindle / 2))), radius: R * 0.2 });
+      }
+      // The crown ring.
+      const crownZ = -L / 2 + R * CROWN_INSET;
+      for (let k = 0; k < 72; k++) {
+        const a = (k / 72) * Math.PI * 2;
+        out.push({ position: toWorld(m.center, f, Math.cos(a) * R * HABITAT.crown, Math.sin(a) * R * HABITAT.crown, crownZ), radius: R * HABITAT.tube * 1.15 });
+      }
+      // The mirrors: a row of discs down each one.
+      const span = HABITAT.mirrorLength * L;
+      for (const phi of habitatMirrorAngles()) {
+        const radial: Vec3 = [Math.cos(phi), Math.sin(phi), 0];
+        const tangent: Vec3 = [-Math.sin(phi), Math.cos(phi), 0];
+        const d: Vec3 = add(scale([0, 0, 1], -Math.cos(HABITAT.mirrorTilt)), scale(radial, Math.sin(HABITAT.mirrorTilt)));
+        const n = norm(cross(tangent, d));
+        const hinge = scale(radial, R * 1.04);
+        for (let s = R * 0.25; s < span; s += R * 0.5) {
+          const local = add(add(hinge, [0, 0, L / 2]), scale(d, s));
+          out.push({ position: toWorld(m.center, f, ...local), radius: R * 0.5, normal: toWorld([0, 0, 0], f, ...n), thick: 8 });
+        }
+      }
+      return out;
+    }
+    case 'lattice':
+      return latticePanels(m).map((p) => ({ position: p.at, radius: m.cell / Math.sqrt(3), normal: p.normal, thick: 6 }));
+  }
+}
+
+/** The bounding sphere of a megastructure, for keeping two of them apart. */
+export function megaBound(m: Megastructure): number {
+  switch (m.type) {
+    case 'gate':
+      return m.radius * 1.35;
+    case 'habitat':
+      return Math.hypot(habitatHalfLength(m.radius, m.length), habitatReach(m.radius, m.length));
+    case 'lattice':
+      return Math.hypot(m.width, m.height) * 1.1;
+  }
+}
+
+// --- gigastructures --------------------------------------------------------------------------
+
+export type GigaKind = 'ringworld' | 'armillary';
+export const GIGA_KINDS: readonly GigaKind[] = ['ringworld', 'armillary'];
+
+/**
+ * A band around a star (at `center`), its inner face the land, lit by the star: `axis` is the
+ * normal of its plane, `width` the band's breadth along it. Rim walls stand on both edges.
+ */
+export type Ringworld = { type: 'ringworld'; center: Vec3; axis: Vec3; up: Vec3; radius: number; width: number; seed: number };
+/** `rings` rings of collectors around a star at `center`, radii from `inner` to `outer`. */
+export type Armillary = { type: 'armillary'; center: Vec3; inner: number; outer: number; rings: number; seed: number };
+export type Gigastructure = Ringworld | Armillary;
+
+/** Ringworld proportions, as fractions of its width: rim wall height and hull thickness. */
+export const RINGWORLD = { wall: 0.1, hull: 0.015 } as const;
+
+/**
+ * A band: the strip of a cylinder of `radius` around `axis`, `width` wide along it and
+ * `thickness` thick, with walls `wall` high standing inward on both edges (0 for none).
+ */
+export type Band = { center: Vec3; axis: Vec3; radius: number; width: number; thickness: number; wall: number };
+
+export type ArmillaryRing = { radius: number; width: number; axis: Vec3; up: Vec3; speed: number; phase: number; seed: number };
+
+/** The rings of an armillary, evenly spaced from inner to outer, each tilted its own way. */
+export function armillaryRings(a: Armillary): ArmillaryRing[] {
+  const rng = createRng(a.seed).fork('rings');
+  return Array.from({ length: a.rings }, (_, k) => {
+    const radius = a.inner + (a.outer - a.inner) * (a.rings === 1 ? 0 : k / (a.rings - 1));
+    const axis = rng.onSphere();
+    const up = norm(cross(axis, Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+    return { radius, width: radius * rng.range(0.035, 0.06), axis, up, speed: rng.range(0.004, 0.012) * (rng.chance(0.5) ? 1 : -1), phase: rng.range(0, Math.PI * 2), seed: rng.int(1, 1e9) };
+  });
+}
+
+/** Armillary collector thickness, metres. */
+export const ARMILLARY_THICK = 30;
+
+/** The solid bands of a gigastructure: the ringworld's, or one per armillary ring. */
+export function gigaBands(g: Gigastructure): Band[] {
+  if (g.type === 'ringworld')
+    return [{ center: g.center, axis: norm(g.axis), radius: g.radius, width: g.width, thickness: g.width * RINGWORLD.hull, wall: g.width * RINGWORLD.wall }];
+  return armillaryRings(g).map((r) => ({ center: g.center, axis: r.axis, radius: r.radius, width: r.width, thickness: ARMILLARY_THICK, wall: 0 }));
+}
+
+/** Distance from p to a band's surface (its strip and walls), ignoring thickness. */
+export function bandDistance(p: Vec3, b: Band): number {
+  const d = sub(p, b.center);
+  const z = d[0] * b.axis[0] + d[1] * b.axis[1] + d[2] * b.axis[2];
+  const rho = Math.hypot(d[0] - z * b.axis[0], d[1] - z * b.axis[1], d[2] - z * b.axis[2]);
+  const half = b.width / 2;
+  const strip = Math.hypot(rho - b.radius, Math.max(0, Math.abs(z) - half));
+  if (b.wall <= 0) return strip;
+  const wall = Math.hypot(Math.abs(z) - half, Math.max(0, b.radius - b.wall - rho, rho - b.radius));
+  return Math.min(strip, wall);
+}
+
+/** Spheres holding a gigastructure's bands, for keeping infinite flight's path clear of them. */
+export function gigaSpheres(g: Gigastructure): Array<{ at: Vec3; r: number }> {
+  const out: Array<{ at: Vec3; r: number }> = [];
+  for (const b of gigaBands(g)) {
+    const n = Math.max(48, Math.ceil((Math.PI * 2 * b.radius) / 2500));
+    const step = (Math.PI * 2 * b.radius) / n;
+    const u = norm(cross(b.axis, Math.abs(b.axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+    const v = cross(b.axis, u);
+    const r = Math.hypot(b.width / 2, b.wall) + step / 2 + b.thickness;
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      out.push({ at: add(b.center, add(scale(u, Math.cos(a) * b.radius), scale(v, Math.sin(a) * b.radius))), r });
+    }
+  }
+  return out;
 }

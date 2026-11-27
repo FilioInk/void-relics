@@ -29,6 +29,14 @@ the build contains no images (beyond the app icons, which a script draws) and no
 - **Satellite graveyards** — clusters of dead satellites (gold foil, solar wings, dishes)
   tumbling among loose panels, and a **debris ring** of junk around the Earth-like world that
   glints from orbit.
+- **Megastructures**, about two per galaxy: a **ring gate** you can fly through, an **O'Neill
+  habitat** (a cylinder with window strips, opened mirrors and a turning ring of greenhouses),
+  or a patch of a **Dyson lattice** — hexagonal collectors curving around the star. They are
+  solid, on the map as hexagons, and named in the location banner.
+- **A gigastructure** in about a third of galaxies: **Dyson rings** — tilted rings of
+  collectors wrapped around the star — or a **ringworld**, a band of land and sea 150 km
+  across circling the whole system past its edge, rim walls on both sides. You can fly to it
+  and skim its land.
 - **20 relics**: in the fields, in the belt, inside nebulae, by the wrecks, in planetary orbits,
   in deep space, and one dangerously close to the star.
 
@@ -79,11 +87,19 @@ slows through fields and ruins, opens up across empty space, and in fields picks
 and then.
 
 **Megastructures** fill one 6 km stretch in ten: a **ring gate** the path flies through, an
-**O'Neill habitat** — a spinning cylinder with window strips, opened mirrors and a ring of
+**O'Neill habitat** — a cylinder with window strips, opened mirrors and a turning ring of
 greenhouses — beside it, or a torn patch of a **Dyson lattice** of hexagonal collectors curving
-overhead. The autopilot slows down to take them in, and no planet or star shares the sky with
-one. The share is `MEGA_CHANCE` in `src/infinite/director.ts`; `?mega=<percent>` in the URL
-overrides it (`?mega=100` puts one in every stretch after the first three, `?mega=0` none). The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
+overhead. **Gigastructures** fill one stretch in fifty: a **ringworld** whose band of land and
+sea arches across the sky some 25 km overhead, its star far below, or **Dyson rings** around a
+star some 35 km off. They fade in long before you reach them and stay a while after. The
+autopilot slows down to take either in, and no planet or star shares the sky with one.
+
+**The chances** are `MEGA_CHANCE` (10%) and `GIGA_CHANCE` (2%) in
+`src/world/megastructures.ts`. Every infinite-flight stretch rolls for each on its own; a star
+system has `SYSTEM_SITES` (20) sites that roll the same way, at most one gigastructure each.
+`?mega=<percent>` and `?giga=<percent>` in the URL override them in both modes (`?mega=100`
+puts a megastructure in every stretch after the first three; `?giga=0` turns gigastructures
+off). The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
 cockpit. The only things on screen are the name of each new place as it fades in and two small
 buttons in the bottom-right corner: a note that switches the music off and on (or **M**; it is
 the same setting as Music in the menu) and full screen (or **F**). The buttons and the cursor

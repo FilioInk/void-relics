@@ -1,12 +1,27 @@
 import { createRng, type Rng } from '../core/rng.ts';
 import { makeName } from '../world/names.ts';
 import { ATMOSPHERE, NEBULA_COLORS, PALETTES, RADIUS_RANGE, type Asteroid, type Planet, type PlanetKind, type Vec3 } from '../world/generate.ts';
-import { MEGA_KINDS, habitatReach, megaSpheres, type Habitat, type Lattice, type Megastructure } from '../world/megastructures.ts';
+import {
+  GIGA_CHANCE,
+  GIGA_KINDS,
+  MEGA_CHANCE,
+  MEGA_KINDS,
+  chance,
+  gigaSpheres,
+  habitatReach,
+  megaSpheres,
+  type Gigastructure,
+  type Habitat,
+  type Lattice,
+  type Megastructure,
+  type StructureChances,
+} from '../world/megastructures.ts';
 
 /**
  * Infinite flight, as plain data: an endless gently curving path, and for every stretch of it a
  * scene — an asteroid field to thread, a nebula to cross, a planet or a star to pass, ruins to
- * drift by, open space to breathe, and now and then a megastructure. Everything is placed
+ * drift by, open space to breathe, now and then a megastructure, and rarely a gigastructure
+ * hanging over all of it. Everything is placed
  * outside a corridor around the path (a ring gate's path runs through its middle), so the
  * autopilot never has to dodge, and the whole thing is a pure function of the seed.
  */
@@ -18,16 +33,30 @@ export const CORRIDOR = 140;
 
 export type SceneKind = 'drift' | 'field' | 'nebula' | 'planet' | 'star' | 'ruins' | 'mega';
 
-/**
- * The share of stretches that hold a megastructure (a ring gate, a habitat cylinder or a Dyson
- * lattice), 0..1. Each stretch rolls for it on its own, so this is the share you get.
- * `?mega=<percent>` in the URL overrides it.
- */
-export const MEGA_CHANCE = 0.1;
-/** The first stretches stay calm: no megastructure before this one. */
+// The shares of stretches with a megastructure and a gigastructure live with the shapes, in
+// src/world/megastructures.ts, because the star system rolls its sites with the same numbers.
+export { GIGA_CHANCE, MEGA_CHANCE };
+/** The first stretches stay calm: no megastructure before this one, no gigastructure before the next. */
 export const MEGA_FROM = 3;
+export const GIGA_FROM = 4;
+/**
+ * A gigastructure is hundreds of kilometres across: its stretch is loaded this many stretches
+ * early (it fades in) and kept this many after.
+ */
+export const GIGA_AHEAD = 8;
+export const GIGA_BEHIND = 3;
+/**
+ * No part of a gigastructure comes closer to the path than this while it is loaded. All the
+ * regular scenery keeps within about 15 km of the path, so it can never touch one.
+ */
+export const GIGA_CLEAR = 20000;
 
-export type DirectorOptions = { megaChance?: number };
+export type DirectorOptions = StructureChances;
+
+/** A thing that is a gigastructure. */
+export const isGiga = (t: Thing): t is Gigastructure => t.type === 'ringworld' || t.type === 'armillary';
+/** A thing that is a megastructure. */
+export const isMega = (t: Thing): t is Megastructure => t.type === 'gate' || t.type === 'habitat' || t.type === 'lattice';
 
 export type Thing =
   | { type: 'rocks'; center: Vec3; radius: number; count: number; seed: number }
@@ -37,7 +66,8 @@ export type Thing =
   | { type: 'wreck'; position: Vec3; size: number; pieces: number; seed: number }
   | { type: 'station'; position: Vec3; size: number; kind: 'spine' | 'ring'; pieces: number; seed: number }
   | { type: 'graveyard'; center: Vec3; radius: number; satellites: number; seed: number }
-  | Megastructure;
+  | Megastructure
+  | Gigastructure;
 
 export type Segment = {
   index: number;
@@ -152,12 +182,15 @@ const STAR_GAP = 6;
 /**
  * Hands out segments in order, remembering enough of the past to pace them: no star too soon
  * after the last, never two nebulae or planets back to back, no three fields in a row. A
- * megastructure has the sky to itself: no planet or star in the stretch either side of it.
+ * megastructure or a gigastructure has the sky to itself: no planet or star in its stretch or
+ * either side of it, and no far planet while a gigastructure is loaded.
  */
 export class Director {
   readonly path: Path;
   /** The share of stretches with a megastructure, 0..1. */
   readonly megaChance: number;
+  /** The share of stretches with a gigastructure, 0..1. */
+  readonly gigaChance: number;
   private readonly seed: number;
   private readonly segments: Segment[] = [];
   private lastStar = -Infinity;
@@ -166,8 +199,8 @@ export class Director {
   constructor(seed: number, opts: DirectorOptions = {}) {
     this.seed = seed;
     this.path = new Path(seed);
-    const p = opts.megaChance ?? MEGA_CHANCE;
-    this.megaChance = Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : MEGA_CHANCE;
+    this.megaChance = chance(opts.megaChance, MEGA_CHANCE);
+    this.gigaChance = chance(opts.gigaChance, GIGA_CHANCE);
   }
 
   /**
@@ -176,6 +209,21 @@ export class Director {
    */
   hasMega(i: number): boolean {
     return i >= MEGA_FROM && createRng(this.seed).fork(`mega-${i}`).next() < this.megaChance;
+  }
+
+  /** Whether stretch i holds a gigastructure: a roll of its own, like `hasMega`. */
+  hasGiga(i: number): boolean {
+    return i >= GIGA_FROM && createRng(this.seed).fork(`giga-${i}`).next() < this.gigaChance;
+  }
+
+  /**
+   * Whether a gigastructure is loaded at any point while stretch i is: no far planets then.
+   * Stretch i is in memory while the ship is in i-3..i+1, gigastructure k while it is in
+   * k-GIGA_AHEAD..k+GIGA_BEHIND.
+   */
+  private gigaAround(i: number): boolean {
+    for (let k = i - GIGA_BEHIND - 1; k <= i + GIGA_AHEAD + 3; k++) if (this.hasGiga(k)) return true;
+    return false;
   }
 
   segment(i: number): Segment {
@@ -188,7 +236,7 @@ export class Director {
     if (i === 1) return 'field';
     const prev = this.segments[i - 1]!.kind;
     const prev2 = this.segments[i - 2]?.kind;
-    const nearMega = this.hasMega(i - 1) || this.hasMega(i + 1);
+    const nearMega = this.hasMega(i - 1) || this.hasMega(i + 1) || this.hasGiga(i - 1) || this.hasGiga(i) || this.hasGiga(i + 1);
     const allowed = (Object.keys(WEIGHTS) as Array<keyof typeof WEIGHTS>).filter((k) => {
       if (k === 'star' && i - this.lastStar < STAR_GAP) return false;
       if ((k === 'planet' || k === 'star') && nearMega) return false;
@@ -209,6 +257,9 @@ export class Director {
     const rng = createRng(this.seed).fork(`segment-${i}`);
     const kind: SceneKind = this.hasMega(i) ? 'mega' : this.pickKind(i, rng);
     const things: Thing[] = [];
+    // A gigastructure comes from its own stream and lights the stretch with its star.
+    const giga = this.hasGiga(i) ? this.gigastructure(i) : null;
+    if (giga) this.light = giga.star.position;
     const path = this.path;
     const s0 = i * SEGMENT;
     const s1 = s0 + SEGMENT;
@@ -288,15 +339,57 @@ export class Director {
         things.push(this.megastructure(rng, s0));
         break;
       case 'drift':
-        // Open space, now and then a far planet on the horizon.
-        if (rng.chance(0.4)) {
+        // Open space, now and then a far planet on the horizon (not where a gigastructure stands).
+        if (rng.chance(0.4) && !this.gigaAround(i)) {
           const planet = this.planet(rng, i, 0);
           planet.position = place(0.7, rng.range(14000, 22000), planet.radius * 1.2);
           things.push({ type: 'planet', planet, sun: this.light });
         }
         break;
     }
+    if (giga) things.push(giga.shape, giga.star);
     return { index: i, kind, name, things, light: this.light };
+  }
+
+  /**
+   * A gigastructure for stretch i, with its star. A ringworld stands across the path, its band
+   * arching overhead some 25 km up and its star far below; Dyson rings circle a star some 35 km
+   * off to a side or overhead. Either is pushed further out until no part of it comes within
+   * GIGA_CLEAR of the path anywhere it is loaded.
+   */
+  private gigastructure(i: number): { shape: Gigastructure; star: Extract<Thing, { type: 'star' }> } {
+    const rng = createRng(this.seed).fork(`giga-shape-${i}`);
+    const path = this.path;
+    const s0 = i * SEGMENT;
+    const mid = path.frame(s0 + SEGMENT / 2);
+    const kind = rng.pick(GIGA_KINDS);
+    const seed = rng.int(1, 1e9);
+    const name = makeName(rng);
+    const color = rng.pick([0xffd27a, 0xffe6a8, 0xffb860, 0xbfd8ff]);
+    const samples: Vec3[] = [];
+    for (let s = Math.max(0, (i - GIGA_AHEAD - 1) * SEGMENT); s <= (i + GIGA_BEHIND + 4) * SEGMENT; s += 300) samples.push(path.at(s));
+    const clear = (g: Gigastructure) => gigaSpheres(g).every(({ at, r }) => samples.every((q) => distance(at, q) > GIGA_CLEAR + r));
+    const settle = (make: (d: number) => Gigastructure, d0: number): Gigastructure => {
+      let g = make(d0);
+      for (let k = 0; k < 12 && !clear(g); k++) g = make(d0 * (1.2 + k * 0.15));
+      return g;
+    };
+    if (kind === 'ringworld') {
+      const radius = rng.range(110000, 150000);
+      const width = rng.range(6000, 9000);
+      // The ring's plane holds "up"; it crosses the path square on or a little skewed.
+      const yaw = rng.range(-0.35, 0.35);
+      const axis = norm(add(scale(mid.forward, Math.cos(yaw)), scale(mid.right, Math.sin(yaw))));
+      const shape = settle((h) => ({ type: 'ringworld', center: add(mid.position, scale(mid.up, -(radius - h))), axis, up: mid.up, radius, width, seed }), rng.range(24000, 30000));
+      return { shape, star: { type: 'star', position: shape.center, radius: rng.range(3000, 4200), color, name } };
+    }
+    const inner = rng.range(6000, 8000);
+    const outer = rng.range(10500, 13000);
+    const rings = rng.int(3, 5);
+    const angle = rng.range(0.15, Math.PI - 0.15);
+    const dir = add(scale(mid.right, Math.cos(angle)), scale(mid.up, Math.sin(angle)));
+    const shape = settle((d) => ({ type: 'armillary', center: add(mid.position, scale(dir, d)), inner, outer, rings, seed }), rng.range(32000, 38000));
+    return { shape, star: { type: 'star', position: shape.center, radius: rng.range(2400, 3200), color, name } };
   }
 
   /**
@@ -391,11 +484,14 @@ export function fieldRocks(thing: Extract<Thing, { type: 'rocks' }>, path: Path,
   return out;
 }
 
-/** Which segments should be in memory when the ship is at distance s: one behind, three ahead. */
-export function wantedSegments(s: number): number[] {
+/**
+ * Which segments should be in memory when the ship is at distance s: one behind, three ahead,
+ * and any with a gigastructure from GIGA_AHEAD before it until GIGA_BEHIND after.
+ */
+export function wantedSegments(s: number, hasGiga: (i: number) => boolean = () => false): number[] {
   const i = Math.floor(Math.max(0, s) / SEGMENT);
   const out: number[] = [];
-  for (let k = Math.max(0, i - 1); k <= i + 3; k++) out.push(k);
+  for (let k = Math.max(0, i - GIGA_BEHIND); k <= i + GIGA_AHEAD; k++) if ((k >= i - 1 && k <= i + 3) || hasGiga(k)) out.push(k);
   return out;
 }
 

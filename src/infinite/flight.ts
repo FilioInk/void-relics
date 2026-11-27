@@ -9,13 +9,14 @@ import { GUN_MOUNTS, createShip, type ShipView } from '../render/ship.ts';
 import { t } from '../text.ts';
 import { h, icon } from '../ui/dom.ts';
 import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
-import { Director, SEGMENT, cruiseSpeed, distance, wantedSegments, type Segment } from './director.ts';
+import { Director, SEGMENT, cruiseSpeed, distance, isGiga, isMega, wantedSegments, type Segment } from './director.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
 /**
  * Infinite flight: the ship flies itself down an endless path while the director lays out
- * fields, nebulae, planets, stars, ruins and megastructures ahead of it. The camera cuts between
- * a few cinematic angles, and in asteroid fields the autopilot picks off rocks now and then.
+ * fields, nebulae, planets, stars, ruins, mega- and gigastructures ahead of it. The camera
+ * cuts between a few cinematic angles, and in asteroid fields the autopilot picks off rocks now
+ * and then.
  *
  * The flight itself is simulated in absolute coordinates (plain JS doubles); the scene is drawn
  * relative to an origin that jumps forward every so often, so the GPU never sees huge numbers.
@@ -121,15 +122,16 @@ export class InfiniteFlight {
     /** Whether the music plays now, for the music button's icon. */
     music: boolean;
     onMusic: () => void;
-    /** The share of stretches with a megastructure (`?mega=`), or the director's default. */
+    /** Shares of stretches with a mega- and a gigastructure (`?mega=`, `?giga=`), or the defaults. */
     megaChance?: number;
+    gigaChance?: number;
   }) {
     this.renderer = opts.renderer;
     this.camera = opts.camera;
     this.sounds = opts.sounds;
     this.envMap = opts.envMap;
     this.seed = opts.seed;
-    this.director = new Director(opts.seed, { megaChance: opts.megaChance });
+    this.director = new Director(opts.seed, { megaChance: opts.megaChance, gigaChance: opts.gigaChance });
 
     this.scene.background = opts.envMap;
     this.scene.fog = this.fog;
@@ -219,7 +221,9 @@ export class InfiniteFlight {
   update(dt: number): FlightFrame {
     this.time += dt;
     const seg = this.director.segment(Math.floor(this.s / SEGMENT));
-    this.speed += (cruiseSpeed(seg.kind) - this.speed) * approach(0.35, dt);
+    // Under a gigastructure the autopilot never hurries: there is a lot to look at.
+    const cruise = seg.things.some(isGiga) ? Math.min(cruiseSpeed(seg.kind), GIGA_CRUISE) : cruiseSpeed(seg.kind);
+    this.speed += (cruise - this.speed) * approach(0.35, dt);
     this.s += this.speed * dt;
     this.pose(dt);
     this.stream();
@@ -249,7 +253,7 @@ export class InfiniteFlight {
   }
 
   private stream(): void {
-    const wanted = new Set(wantedSegments(this.s));
+    const wanted = new Set(wantedSegments(this.s, (i) => this.director.hasGiga(i)));
     for (const [i, c] of this.chunks) {
       if (wanted.has(i)) continue;
       for (const t of c.targets) {
@@ -539,9 +543,14 @@ export class InfiniteFlight {
     this.segmentShown = seg.index;
     const planet = seg.things.find((x) => x.type === 'planet');
     const station = seg.things.find((x) => x.type === 'station');
-    const mega = seg.things.find((x) => x.type === 'gate' || x.type === 'habitat' || x.type === 'lattice');
+    const mega = seg.things.find(isMega);
+    const giga = seg.things.find(isGiga);
+    const star = seg.things.find((x) => x.type === 'star');
+    const gigaName = star?.type === 'star' ? star.name : seg.name;
     const text =
-      seg.kind === 'field' ? t('regionField', { name: seg.name })
+      giga?.type === 'ringworld' ? t('regionRingworld', { name: gigaName })
+      : giga?.type === 'armillary' ? t('regionArmillary', { name: gigaName })
+      : seg.kind === 'field' ? t('regionField', { name: seg.name })
       : seg.kind === 'nebula' ? t('regionNebula', { name: seg.name })
       : seg.kind === 'star' ? t('regionStar', { name: seg.name })
       : seg.kind === 'planet' && planet?.type === 'planet' ? t('regionPlanet', { name: planet.planet.name })
@@ -558,6 +567,8 @@ export class InfiniteFlight {
 }
 
 const WHITE = new THREE.Color(1, 1, 1);
+/** Top cruise speed through a stretch with a gigastructure, m/s. */
+const GIGA_CRUISE = 600;
 /** How long the pointer may rest before the button and cursor fade out. */
 const IDLE_MS = 2500;
 const ICON_CAMERA = '<path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z"/><circle cx="12" cy="13.5" r="3.2"/>';

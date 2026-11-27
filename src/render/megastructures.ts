@@ -1,14 +1,37 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createRng, type Rng } from '../core/rng.ts';
-import { GATE, HABITAT, latticePanels, megaFrame, type Gate, type Habitat, type Lattice, type Megastructure } from '../world/megastructures.ts';
+import {
+  ARMILLARY_THICK,
+  CROWN_INSET,
+  GATE,
+  HABITAT,
+  RINGWORLD,
+  armillaryRings,
+  habitatMirrorAngles,
+  latticePanels,
+  megaFrame,
+  type Armillary,
+  type Gate,
+  type Gigastructure,
+  type Habitat,
+  type Lattice,
+  type Megastructure,
+  type Ringworld,
+} from '../world/megastructures.ts';
+import { FRAG_HEAD, FRAG_TAIL, NOISE, VERT_HEAD, VERT_TAIL } from './glsl.ts';
 
 /**
  * Megastructures for infinite flight, kilometres across, drawn in a handful of draw calls each:
  * a ring gate of dark blocks with a lit inner rim and a counter-turning inner ring; an O'Neill
- * habitat (three land strips, three window strips, mirrors opened off one end, an agricultural
- * crown at the other) spinning for gravity; and a torn patch of a Dyson lattice — instanced
- * hexagonal collectors on a truss, a few still lit.
+ * habitat (three land strips, three window strips, mirrors opened off one end, a turning
+ * agricultural crown at the other); and a torn patch of a Dyson lattice — instanced hexagonal
+ * collectors on a truss, a few still lit.
+ *
+ * Gigastructures, hundreds of kilometres across: a ringworld (a band of land and sea lit by its
+ * star, rim walls on both edges, a haze of air over it) and Dyson rings (tilted rings of
+ * collectors around a star, each turning at its own pace). These fade in, because infinite
+ * flight has to load them while they are already in view.
  *
  * Every group is built around its own centre (the stream moves it into place) and the shapes
  * follow the proportions in `src/world/megastructures.ts`, which the director checks against
@@ -212,8 +235,7 @@ function habitat(h: Habitat, rng: Rng, envMap: THREE.Texture | null): MegaView {
   }
   // Mirrors hinged at the +z end over each window strip, opened outward.
   const span = HABITAT.mirrorLength * L;
-  for (let s = 1; s < 6; s += 2) {
-    const phi = (s * Math.PI) / 3 + Math.PI / 6 - Math.PI / 2;
+  for (const phi of habitatMirrorAngles()) {
     const m = new THREE.BoxGeometry(R * 0.95, R * 0.012, span);
     m.translate(0, 0, -span / 2);
     m.rotateX(HABITAT.mirrorTilt);
@@ -226,39 +248,44 @@ function habitat(h: Habitat, rng: Rng, envMap: THREE.Texture | null): MegaView {
     hinge.rotateZ(phi - Math.PI / 2);
     hull.push(solid(hinge, dark, rng));
   }
-  // The agricultural crown at the -z end: a ring of greenhouses on six spokes.
+  // The agricultural crown at the -z end: a ring of greenhouses on six spokes, turning.
+  const crownHull: THREE.BufferGeometry[] = [];
+  const crownGlow: THREE.BufferGeometry[] = [];
   const crownR = HABITAT.crown * R;
-  const crownZ = -L / 2 + R * 0.15;
+  const crownZ = -L / 2 + R * CROWN_INSET;
   const crown = new THREE.TorusGeometry(crownR, HABITAT.tube * R, 10, 120);
   crown.translate(0, 0, crownZ);
-  hull.push(solid(crown, white.clone().multiplyScalar(0.9), rng, 0.05));
+  crownHull.push(solid(crown, white.clone().multiplyScalar(0.9), rng, 0.05));
   for (let k = 0; k < 6; k++) {
     const spoke = new THREE.BoxGeometry(R * 0.04, crownR - R, R * 0.04);
     spoke.translate(0, (crownR + R) / 2, crownZ);
     spoke.rotateZ((k / 6) * Math.PI * 2 + 0.3);
-    hull.push(solid(spoke, dark, rng));
+    crownHull.push(solid(spoke, dark, rng));
   }
   for (let k = 0; k < 60; k++) {
     if (rng.chance(0.2)) continue;
     const pane = new THREE.BoxGeometry(R * 0.05, R * 0.012, R * 0.06);
     pane.translate(0, crownR + HABITAT.tube * R * 0.9, crownZ);
     pane.rotateZ((k / 60) * Math.PI * 2);
-    glow.push(solid(pane, new THREE.Color(0.5, 1.3, 0.6).multiplyScalar(rng.range(0.6, 1)), rng, 0));
+    crownGlow.push(solid(pane, new THREE.Color(0.5, 1.3, 0.6).multiplyScalar(rng.range(0.6, 1)), rng, 0));
   }
 
   const glowMat = glowMaterial();
   const beaconMat = beaconMaterial();
   const mirrorMat = new THREE.MeshStandardMaterial({ color: 0xc8d4e0, metalness: 1, roughness: 0.08, envMap, envMapIntensity: 1.6, side: THREE.DoubleSide });
+  const hullMat = hullMaterial(envMap);
   const group = new THREE.Group();
   orient(group, h.axis, h.up);
+  addAll(group, mesh(hull, hullMat), mesh(glow, glowMat), mesh(mirrors, mirrorMat), mesh(beacons, beaconMat));
   const spin = new THREE.Group();
-  addAll(spin, mesh(hull, hullMaterial(envMap)), mesh(glow, glowMat), mesh(mirrors, mirrorMat), mesh(beacons, beaconMat));
+  addAll(spin, mesh(crownHull, hullMat), mesh(crownGlow, glowMat));
   group.add(spin);
   const phase = rng.range(0, Math.PI * 2);
   return {
     group,
     update(t) {
-      // Spin gravity, slowed down to something the eye can follow.
+      // The crown turns, slowed down to something the eye can follow; the hull and mirrors
+      // stand still, which keeps the star system's collisions where they are drawn.
       spin.rotation.z = phase + t * 0.04;
       beaconMat.color.setRGB(3, 0.35, 0.25).multiplyScalar(blink(t, phase));
     },
@@ -356,6 +383,193 @@ function lattice(l: Lattice, rng: Rng, envMap: THREE.Texture | null): MegaView {
     update(t) {
       // The lit panels breathe, slowly and out of step with everything else.
       glowMat.color.setScalar(0.75 + 0.25 * Math.sin(t * 0.35 + phase));
+    },
+  };
+}
+
+// --- gigastructures ------------------------------------------------------------------------
+
+export type GigaView = {
+  group: THREE.Group;
+  update(t: number, dt: number): void;
+  /** 0..1: infinite flight fades a gigastructure in, since it loads while already in view. */
+  setOpacity(k: number): void;
+};
+
+export function createGigastructure(g: Gigastructure, envMap: THREE.Texture | null): GigaView {
+  return g.type === 'ringworld' ? ringworld(g, envMap) : armillary(g, envMap);
+}
+
+/**
+ * The ringworld's land, shaded per pixel from its own position on the band so it holds detail
+ * from orbit down to a few hundred metres: seas, coasts, plains and dry country, mountains with
+ * snow, weather, darker near the rim walls and hazier far across the ring. It is lit by its
+ * own star at the centre, which faces every part of the band, so it needs no light of ours.
+ */
+const LAND_VERT = /* glsl */ `
+  ${VERT_HEAD}
+  varying vec3 vObj;
+  varying vec3 vWorldPos;
+  varying float vAcross;
+  uniform float uHalf;
+  void main() {
+    vObj = position;
+    vAcross = position.z / uHalf;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+    ${VERT_TAIL}
+  }`;
+
+const LAND_FRAG = /* glsl */ `
+  ${FRAG_HEAD}
+  uniform float uScale;
+  uniform vec3 uSeed;
+  uniform float uSea;
+  uniform float uOpacity;
+  varying vec3 vObj;
+  varying vec3 vWorldPos;
+  varying float vAcross;
+  ${NOISE}
+  void main() {
+    vec3 q = vObj / uScale + uSeed;
+    float h = fbm(q);
+    vec3 col;
+    if (h < uSea) {
+      col = mix(vec3(0.015, 0.05, 0.13), vec3(0.04, 0.16, 0.24), smoothstep(uSea - 0.1, uSea, h));
+    } else {
+      float t = (h - uSea) / (1.0 - uSea);
+      float dry = fbm3o(q * 1.7 + 5.0);
+      col = mix(vec3(0.06, 0.18, 0.04), vec3(0.36, 0.27, 0.12), smoothstep(0.42, 0.62, dry));
+      col = mix(col, vec3(0.26, 0.24, 0.21), smoothstep(0.16, 0.3, t));
+      col = mix(col, vec3(0.8, 0.82, 0.86), smoothstep(0.3, 0.4, t));
+      // Relief: hills and valleys at a finer scale than the coastlines.
+      col *= 0.6 + 0.8 * fbm3o(q * 14.0);
+    }
+    float cloud = fbm3o(q * 2.3 + vec3(11.0, 3.0, 7.0));
+    col = mix(col, vec3(0.62, 0.64, 0.68), smoothstep(0.58, 0.8, cloud) * 0.6);
+    // In the shadow of the rim walls along both edges.
+    float edge = 1.0 - abs(vAcross);
+    col *= mix(0.35, 1.0, smoothstep(0.0, 0.08, edge));
+    // Air: the further across the ring, the bluer.
+    float d = length(cameraPosition - vWorldPos);
+    col = mix(col, vec3(0.22, 0.36, 0.6), clamp(d / 450000.0, 0.0, 0.45));
+    gl_FragColor = vec4(col * 1.15, uOpacity);
+    ${FRAG_TAIL}
+  }`;
+
+function ringworld(g: Ringworld, envMap: THREE.Texture | null): GigaView {
+  const rng = createRng(g.seed);
+  const R = g.radius;
+  const W = g.width;
+  const wall = W * RINGWORLD.wall;
+  const hull = W * RINGWORLD.hull;
+  const SEG = 1024;
+  const group = new THREE.Group();
+  orient(group, g.axis, g.up);
+
+  // The land: the inside of an open cylinder, axis along z.
+  const land = new THREE.Mesh(
+    new THREE.CylinderGeometry(R, R, W, SEG, 1, true).rotateX(Math.PI / 2),
+    new THREE.ShaderMaterial({
+      vertexShader: LAND_VERT,
+      fragmentShader: LAND_FRAG,
+      side: THREE.BackSide,
+      transparent: true,
+      uniforms: {
+        uHalf: { value: W / 2 },
+        uScale: { value: W * rng.range(0.9, 1.3) },
+        uSeed: { value: new THREE.Vector3(rng.range(0, 100), rng.range(0, 100), rng.range(0, 100)) },
+        uSea: { value: rng.range(0.44, 0.52) },
+        uOpacity: { value: 1 },
+      },
+    }),
+  );
+  // The underside, and the rim walls standing inward from both edges, with lights along the top.
+  const shellMat = new THREE.MeshStandardMaterial({ color: 0x3a3e46, metalness: 0.6, roughness: 0.6, envMap, envMapIntensity: 0.6, transparent: true });
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x4a4e56, metalness: 0.5, roughness: 0.7, envMap, envMapIntensity: 0.5, side: THREE.DoubleSide, transparent: true });
+  const lightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.15, 0.7), transparent: true });
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(R + hull, R + hull, W, SEG / 2, 1, true).rotateX(Math.PI / 2), shellMat);
+  const walls: THREE.Mesh[] = [];
+  for (const side of [1, -1]) {
+    walls.push(new THREE.Mesh(new THREE.RingGeometry(R - wall, R + hull, SEG, 1).translate(0, 0, (side * W) / 2), wallMat));
+    walls.push(new THREE.Mesh(new THREE.RingGeometry(R - wall - 25, R - wall, SEG, 1).translate(0, 0, (side * W) / 2), lightMat));
+  }
+  // A thin haze of air over the land, brightest seen edge-on.
+  const hazeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.5, 0.95), transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide });
+  const haze = new THREE.Mesh(new THREE.CylinderGeometry(R - wall * 0.6, R - wall * 0.6, W * 0.97, SEG / 2, 1, true).rotateX(Math.PI / 2), hazeMat);
+  group.add(land, shell, haze, ...walls);
+  const landUniforms = (land.material as THREE.ShaderMaterial).uniforms;
+  return {
+    group,
+    update() {},
+    setOpacity(k) {
+      landUniforms['uOpacity']!.value = k;
+      shellMat.opacity = wallMat.opacity = lightMat.opacity = k;
+      hazeMat.opacity = 0.06 * k;
+    },
+  };
+}
+
+function armillary(a: Armillary, envMap: THREE.Texture | null): GigaView {
+  const rng = createRng(a.seed).fork('build');
+  const group = new THREE.Group();
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.75, roughness: 0.35, flatShading: true, envMap, envMapIntensity: 1.1, transparent: true });
+  const hoopMat = new THREE.MeshStandardMaterial({ color: 0x6a6e78, metalness: 0.7, roughness: 0.45, envMap, envMapIntensity: 0.8, transparent: true });
+  const lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.7, 1.05, 0.45), transparent: true });
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const z = new THREE.Vector3(0, 0, 1);
+  const spins = armillaryRings(a).map((r) => {
+    const ring = new THREE.Group();
+    orient(ring, r.axis, r.up);
+    const spin = new THREE.Group();
+    ring.add(spin);
+    const n = Math.max(60, Math.round((Math.PI * 2 * r.radius) / 260));
+    const seg = (Math.PI * 2 * r.radius) / n;
+    const panels = new THREE.InstancedMesh(box, panelMat, n);
+    const lamps = new THREE.InstancedMesh(box, lampMat, n);
+    let count = 0;
+    let lit = 0;
+    const hue = rng.range(0.58, 0.66);
+    for (let k = 0; k < n; k++) {
+      if (rng.chance(0.08)) continue;
+      const ang = ((k + 0.5) / n) * Math.PI * 2;
+      q.setFromAxisAngle(z, ang - Math.PI / 2);
+      // Built with x along the ring, y outward and z across it.
+      m.compose(new THREE.Vector3(Math.cos(ang) * r.radius, Math.sin(ang) * r.radius, 0), q, new THREE.Vector3(seg * 0.92, ARMILLARY_THICK, r.width));
+      panels.setMatrixAt(count, m);
+      panels.setColorAt(count, new THREE.Color().setHSL(hue, 0.35, rng.range(0.1, 0.2)));
+      count++;
+      if (k % 5 === 0) {
+        const out = r.radius + ARMILLARY_THICK / 2 + 3;
+        m.compose(new THREE.Vector3(Math.cos(ang) * out, Math.sin(ang) * out, 0), q, new THREE.Vector3(seg * 0.25, 6, r.width * 0.2));
+        lamps.setMatrixAt(lit++, m);
+      }
+    }
+    panels.count = count;
+    lamps.count = lit;
+    for (const im of [panels, lamps]) {
+      im.instanceMatrix.needsUpdate = true;
+      im.computeBoundingSphere();
+    }
+    if (panels.instanceColor) panels.instanceColor.needsUpdate = true;
+    // A structural hoop along each edge.
+    const hoops = [1, -1].map((side) => new THREE.Mesh(new THREE.TorusGeometry(r.radius, 14, 6, 360).translate(0, 0, (side * r.width) / 2), hoopMat));
+    spin.add(panels, lamps, ...hoops);
+    group.add(ring);
+    return { spin, speed: r.speed, phase: r.phase };
+  });
+  return {
+    group,
+    update(t) {
+      // Each ring of collectors drifts round at its own pace; the lamps breathe.
+      for (const s of spins) s.spin.rotation.z = s.phase + t * s.speed;
+      lampMat.color.setRGB(1.7, 1.05, 0.45).multiplyScalar(0.75 + 0.25 * Math.sin(t * 0.5));
+    },
+    setOpacity(k) {
+      panelMat.opacity = hoopMat.opacity = lampMat.opacity = k;
     },
   };
 }
