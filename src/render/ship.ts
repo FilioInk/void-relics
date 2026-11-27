@@ -59,10 +59,14 @@ function flameMaterial(): THREE.ShaderMaterial {
         // Shock diamonds: bright knots standing in the exhaust, crisper the harder it burns.
         float knots = pow(0.5 + 0.5 * cos(along * 34.0 - uTime * 1.5), 8.0) * smoothstep(0.0, 0.08, along) * (1.0 - along);
         a *= 1.0 + knots * (0.4 + uPower) * 1.6;
-        vec3 cool = vec3(0.35, 0.65, 1.0);
-        vec3 hot = vec3(1.0, 0.95, 0.9);
-        vec3 col = mix(cool, hot, pow(1.0 - along, 9.0) + knots * 0.6);
-        col = mix(col, vec3(1.0, 0.55, 0.95), uBoost * 0.35 * along);
+        // White-hot at the throat, orange through the body, a deep ember at the tail. Boost
+        // pushes the white core further down the plume rather than changing its hue.
+        vec3 white = vec3(1.0, 0.94, 0.82);
+        vec3 orange = vec3(1.0, 0.42, 0.08);
+        vec3 ember = vec3(0.8, 0.16, 0.02);
+        vec3 col = mix(orange, ember, smoothstep(0.35, 1.0, along));
+        float core = pow(1.0 - along, 4.5 - uBoost * 2.5);
+        col = mix(col, white, clamp(core + knots * 0.6, 0.0, 1.0));
         float power = 0.08 + uPower;
         gl_FragColor = vec4(col * a * power * 0.7, a);
         ${FRAG_TAIL}
@@ -401,7 +405,7 @@ export function createShip(envMap: THREE.Texture | null): ShipView {
   // --- glowing parts: nozzle throats, hot rims, flames ----------------------------------------
   const flames: THREE.ShaderMaterial[] = [];
   const flameMeshes: THREE.Mesh[] = [];
-  const nozzleBase = new THREE.Color(0.45, 0.75, 1.0);
+  const nozzleBase = new THREE.Color(1.0, 0.62, 0.3);
   const nozzleGlow = new THREE.MeshBasicMaterial({ color: nozzleBase.clone() });
   const rimBase = new THREE.Color(1.0, 0.45, 0.2);
   const rimGlow = new THREE.MeshBasicMaterial({ color: rimBase.clone() });

@@ -5,6 +5,8 @@
   --faint: rgba(160, 190, 220, 0.22);
   --accent: #5ff5e0;
   --amber: #ffb547;
+  /* Boost wears the engine flame's orange: the HUD tag and the touch button. */
+  --boost: 255, 140, 50;
   --danger: #ff4d4d;
   --panel: rgba(8, 14, 26, 0.62);
   --font: 'Exo 2', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -64,8 +66,8 @@ html, body {
 .bar.hull i { background: linear-gradient(90deg, var(--danger), var(--amber) 35%, var(--accent) 70%); }
 .bar.throttle i { background: var(--ink); }
 .bar.throttle.rev i { background: var(--amber); }
-.boost-tag { font-weight: 800; letter-spacing: 0.3em; color: #ff8cf0; opacity: 0.15; transition: opacity 0.2s; font-size: 13px; padding-bottom: 2px; }
-.boost-tag.on { opacity: 1; text-shadow: 0 0 10px #ff8cf0; }
+.boost-tag { font-weight: 800; letter-spacing: 0.3em; color: rgb(var(--boost)); opacity: 0.15; transition: opacity 0.2s; font-size: 13px; padding-bottom: 2px; }
+.boost-tag.on { opacity: 1; text-shadow: 0 0 10px rgb(var(--boost)); }
 
 .hud-warn { position: absolute; top: 31%; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); font-weight: 800; letter-spacing: 0.18em; font-size: 18px; text-align: center; color: var(--danger); }
 .hud-warn.soft { color: var(--amber); font-weight: 600; font-size: 15px; }
@@ -185,7 +187,7 @@ button { font: inherit; cursor: pointer; }
 /* --- touch controls (touch-first devices: body.touch) ---
    A floating stick on the left half, four round buttons in an arc around the right thumb, and
    map and pause in the top-right corner. The buttons wear the colours the HUD already uses for
-   the same things: white throttle, amber reverse, pink boost, red laser. */
+   the same things: white throttle, amber reverse, orange boost, red laser. */
 #ui .touch { position: absolute; inset: 0; pointer-events: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 #ui .touch .t-zone, #ui .touch .t-btn, #ui .touch .t-top { pointer-events: auto; touch-action: none; }
 body.touch #scene { touch-action: none; }
@@ -202,7 +204,7 @@ body.touch .overlay { touch-action: pan-x pan-y; }
 .t-btn.on { background: rgba(var(--c), 0.24); border-color: rgb(var(--c)); box-shadow: 0 0 16px rgba(var(--c), 0.45); }
 .t-fire { --c: 255, 122, 100; width: 88px; height: 88px; right: 22px; bottom: calc(22px + var(--lift) + var(--low)); font-size: 12px; }
 .t-thrust { width: 64px; height: 64px; right: 130px; bottom: calc(18px + var(--lift) + var(--low)); }
-.t-boost { --c: 255, 140, 240; width: 56px; height: 56px; right: 24px; bottom: calc(134px + var(--lift) + var(--low)); }
+.t-boost { --c: var(--boost); width: 56px; height: 56px; right: 24px; bottom: calc(134px + var(--lift) + var(--low)); }
 /* Latched by a tap: the engine keeps burning with no thumb on it. */
 .t-thrust.latched::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 1px dashed rgba(var(--c), 0.75); }
 /* THRUST pressed again brakes: it turns amber and reads BRAKE while held. */
