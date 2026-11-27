@@ -5,6 +5,7 @@ import {
   CLASS_CODES,
   EVOLVED,
   FAMILY_WEIGHTS,
+  GOLDEN_SUN,
   MAIN_SEQUENCE,
   SUN_RADIUS_M,
   SYSTEM_FAMILIES,
@@ -183,4 +184,13 @@ test('map colours are sRGB hex', () => {
   assert.equal(cssColor([0, 0, 0]), '#000000');
   assert.equal(cssColor([0.2159, 0.2159, 0.2159]), '#808080');
   assert.equal(cssColor([2, -1, 0.5]), '#ff00bc');
+});
+
+test("the golden sun keeps the original sun's hand-tuned look", () => {
+  const look = starLook(GOLDEN_SUN);
+  assert.ok(Math.abs(look.radius - 2600) < 1e-6);
+  assert.deepEqual([look.hot, look.deep, look.gain, look.reach, look.cells], [[1, 0.82, 0.5], [0.8, 0.14, 0.01], 1.9, 6.8, 18]);
+  // A real G8 V of the same numbers is paler: the golden look is the exception, not the rule.
+  const plain = starLook({ ...GOLDEN_SUN, golden: undefined });
+  assert.notDeepEqual(plain.hot, look.hot);
 });

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ARTIFACT_COUNT, JUNK_VARIANTS, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateJunk, generateWorld, junkNormal, type Vec3 } from './generate.ts';
-import { SYSTEM_FAMILIES, SYSTEM_STAR_MAX_M, gameRadius } from './stars.ts';
+import { ARTIFACT_COUNT, DEFAULT_SEED, JUNK_VARIANTS, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateJunk, generateWorld, junkNormal, type Vec3 } from './generate.ts';
+import { GOLDEN_SUN, SYSTEM_FAMILIES, SYSTEM_STAR_MAX_M, gameRadius } from './stars.ts';
 
 const SEEDS = [1, 7, 1337, 2024, 99991, 123456789];
 
@@ -63,6 +63,16 @@ test('exactly one artifact is placed as a dare near the star, inside the heat zo
   const hot = w.artifacts.filter((a) => dist(a.position, w.sun.position) < w.sun.heatRadius);
   assert.equal(hot.length, 1);
   assert.equal(hot[0]!.context, 'sun');
+});
+
+test('the default galaxy keeps its golden sun, exactly as big as it always was', () => {
+  const w = generateWorld(DEFAULT_SEED);
+  assert.equal(DEFAULT_SEED, 1337);
+  assert.deepEqual(w.sun.star, GOLDEN_SUN);
+  assert.equal(w.sun.star.family, 'G');
+  assert.ok(Math.abs(w.sun.radius - 2600) < 1e-6, `${w.sun.radius}`);
+  // Other galaxies draw their own.
+  assert.notDeepEqual(generateWorld(DEFAULT_SEED + 1).sun.star, GOLDEN_SUN);
 });
 
 test('every class of star leaves the system playable', () => {

@@ -123,6 +123,10 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   whose warning zone (2.6 radii) keeps the innermost planet (~11 km) outside it: M, K, G, F,
   cooler A dwarfs and white dwarfs, at most `SYSTEM_STAR_MAX_M`. A giant would swallow the
   system; letting one in means moving the planets out too.
+- **The default galaxy keeps its golden sun.** `DEFAULT_SEED` (1337, the title screen and a
+  first launch) always gets `GOLDEN_SUN`: a G8 V sized to the old 2600 m, with the original
+  hand-tuned golden palette (`golden: true` in `starLook()`), so its layout and look are exactly
+  what they were before stars had classes.
 - **One light per star would recompile everything.** Three.js rebuilds every material's
   shader when the number of lights changes, so infinite flight drops each star's PointLight
   and moves a single DirectionalLight instead.

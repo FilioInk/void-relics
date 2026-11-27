@@ -1,5 +1,6 @@
 import './style.css';
 import { Game } from './game/game.ts';
+import { DEFAULT_SEED } from './world/generate.ts';
 import { SETTINGS_KEY, defaultSettings, parseSettings, readStore } from './game/settings.ts';
 import { t } from './text.ts';
 import { captureInstallPrompt, registerServiceWorker } from './ui/install.ts';
@@ -10,8 +11,6 @@ captureInstallPrompt();
 // Full screen (and the installed app) keeps the phone's screen on.
 createWakeLock();
 if (import.meta.env.PROD) registerServiceWorker(window);
-
-const DEFAULT_SEED = 1337;
 
 function seedFromUrl(): number {
   const raw = new URLSearchParams(window.location.search).get('seed');
