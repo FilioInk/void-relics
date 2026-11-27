@@ -2,39 +2,47 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { AudioEngine } from '../audio/engine.ts';
+import { InfiniteFlight } from '../infinite/flight.ts';
 import { t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
-import { createAsteroids } from '../render/asteroids.ts';
+import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
+import { createCombatFx, type CombatFx, type LootItem } from '../render/combat.ts';
+import { createDebris, type DebrisView } from '../render/debris.ts';
 import { createGpuTimer, type GpuTimer } from '../render/gpuTimer.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { createNebulae, type NebulaView } from '../render/nebula.ts';
 import { createPlanet, type PlanetView } from '../render/planets.ts';
 import { BloomOutputPass, BloomPass } from '../render/post.ts';
-import { SHIP_RADIUS, createShip, type ShipView } from '../render/ship.ts';
+import { GUN_MOUNTS, SHIP_RADIUS, createShip, type ShipView } from '../render/ship.ts';
 import { createSky, type Sky } from '../render/sky.ts';
 import { createSun, type SunView } from '../render/sun.ts';
-import { createWrecks, type Collider, type WreckView } from '../render/wrecks.ts';
+import { createWrecks, type WreckView } from '../render/wrecks.ts';
 import { createHud, type Hud, type Marker, type Warning } from '../ui/hud.ts';
 import { createMap, type MapView } from '../ui/map.ts';
 import { createPerfOverlay, type PerfOverlay } from '../ui/perf.ts';
 import { PerfStats } from '../ui/perfStats.ts';
 import { createScreens } from '../ui/screens.ts';
-import { generateAsteroids, generateWorld, type World } from '../world/generate.ts';
+import { generateAsteroids, generateJunk, generateWorld, type Asteroid, type World } from '../world/generate.ts';
 import { nebulaDensityAt, regionAt, scanRange, type Region } from '../world/regions.ts';
 import { aimOf, moveCursor, steerRadius, type Cursor } from './aim.ts';
 import { BENCH_SPOTS, benchSpot, type BenchSpotName } from './benchSpots.ts';
 import { stepExposure, targetExposure } from './exposure.ts';
 import { approach, createFlightState, forwardOf, stepFlight, type FlightInput, type FlightState } from './flight.ts';
 import { collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull, type Hull } from './hazards.ts';
-import { PICKUP_RADIUS, collect, formatTime, isComplete, parseProgress, storageKey, type Progress } from './progress.ts';
+import { PICKUP_RADIUS, collect, formatTime, isComplete, markBroken, parseProgress, storageKey, type Progress } from './progress.ts';
 import { SETTINGS_KEY, writeStore, readStore, type Settings } from './settings.ts';
 import { SpatialHash } from './spatialHash.ts';
+import { SEALED_CONTEXTS, SHELL_RADIUS, lootOf, segmentSphere, stepBolts, targetHp, targetId, type Bolt, type BoltHit, type Target } from './targets.ts';
+import { WEAPON, createWeapon, stepWeapon } from './weapons.ts';
 
-type State = 'loading' | 'menu' | 'playing' | 'paused' | 'map' | 'dead' | 'victory';
+type State = 'loading' | 'menu' | 'playing' | 'paused' | 'map' | 'dead' | 'victory' | 'infinite';
 
 const REGION_KEYS: Record<Region['kind'], Key> = {
   star: 'regionStar',
   wreck: 'regionWreck',
+  station: 'regionStation',
+  graveyard: 'regionGraveyard',
+  junk: 'regionJunk',
   nebula: 'regionNebula',
   field: 'regionField',
   belt: 'regionBelt',
@@ -48,6 +56,8 @@ export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer;
   private readonly bloom: BloomPass;
+  private readonly renderPass: RenderPass;
+  private infinite: InfiniteFlight | null = null;
   private readonly scene = new THREE.Scene();
   // Fog lives on the scene for the whole session and is only thinned to zero outside nebulae:
   // swapping it for null at a nebula edge made every material pick a new shader (a hitch).
@@ -58,12 +68,16 @@ export class Game {
   private fill!: THREE.DirectionalLight;
 
   private world!: World;
-  private grid!: SpatialHash<Collider>;
+  private grid!: SpatialHash<Target>;
   private sky!: Sky;
   private sun!: SunView;
   private planets: PlanetView[] = [];
   private nebulae!: NebulaView;
   private wrecks!: WreckView;
+  private debris!: DebrisView;
+  private asteroids!: AsteroidView;
+  private rocks: Asteroid[] = [];
+  private fx!: CombatFx;
   private artifacts!: ArtifactView;
   private ship!: ShipView;
   private dust!: DustView;
@@ -75,6 +89,18 @@ export class Game {
   private hull: Hull = createHull();
   private progress!: Progress;
   private audio: AudioEngine | null = null;
+
+  // Lasers.
+  private readonly weapon = createWeapon();
+  private readonly bolts: Bolt[] = [];
+  private firing = false;
+  private wasOverheated = false;
+  /** Hits taken so far by targets that have not broken yet. */
+  private readonly damage = new Map<Target, number>();
+  /** Relics still sealed inside a shell of rock. */
+  private readonly sealed = new Set<string>();
+  private readonly loot: LootItem[] = [];
+  private readonly hitScratch: Target[] = [];
 
   private state: State = 'loading';
   private readonly keys = new Set<string>();
@@ -90,7 +116,7 @@ export class Game {
   private readonly inScan = new Set<string>();
   // Per-frame scratch, reused so a frame allocates nothing the garbage collector must chase.
   private readonly input: FlightInput = { aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 };
-  private readonly near: Collider[] = [];
+  private readonly near: Target[] = [];
   private readonly markers: Marker[] = [];
   private readonly markerPool: Marker[] = [];
   private readonly nebulaCss = new Map<string, string>();
@@ -139,7 +165,8 @@ export class Game {
     // Reversed Z only pays off with a float depth buffer, so the scene target gets one.
     const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType) });
     this.composer = new EffectComposer(this.renderer, sceneTarget);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(this.renderPass);
     this.bloom = new BloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new BloomOutputPass(this.bloom));
@@ -157,6 +184,7 @@ export class Game {
       {
         onLaunch: () => this.launch(),
         onNewGalaxy: () => this.newGalaxy(),
+        onInfinite: () => this.startInfinite(),
         onResume: () => this.resume(),
         onKeepFlying: () => this.resume(),
         onSettings: (next) => this.applySettings(next),
@@ -184,6 +212,8 @@ export class Game {
     this.sky = createSky(this.renderer, this.seed);
     this.scene.background = this.sky.background;
     this.scene.fog = this.fog;
+    // Shared with the infinite flight's scene: never disposed with a chunk.
+    this.sky.background.userData['shared'] = true;
     this.scene.add(this.sky.stars);
 
     this.sun = createSun(world.sun);
@@ -202,9 +232,13 @@ export class Game {
     }
     await nextFrame();
 
-    this.scene.add(createAsteroids(rocks, this.seed).group);
+    this.rocks = rocks;
+    this.asteroids = createAsteroids(rocks, this.seed);
+    this.scene.add(this.asteroids.group);
     this.wrecks = createWrecks(world.wrecks);
     this.scene.add(this.wrecks.group);
+    this.debris = createDebris(world.stations, world.graveyards, generateJunk(world), this.sky.background, this.seed);
+    this.scene.add(this.debris.group);
     await nextFrame();
 
     this.nebulae = createNebulae(world.nebulae, this.seed);
@@ -217,20 +251,37 @@ export class Game {
     this.scene.add(this.ship.root);
     this.dust = createDust();
     this.scene.add(this.dust.lines);
-
-    const colliders: Collider[] = rocks.map((r) => ({ position: r.position, radius: r.radius * 0.92 }));
-    colliders.push(...this.wrecks.colliders);
-    this.grid = new SpatialHash(600, colliders);
+    this.fx = createCombatFx();
+    this.scene.add(this.fx.group);
 
     const ids = new Set(world.artifacts.map((a) => a.id));
     this.progress = parseProgress(readStore(storageKey(this.seed)), this.seed, ids);
     this.artifacts.setFound(this.progress.found);
+
+    // Everything solid. What was shot apart in an earlier session stays gone.
+    const broken = new Set(this.progress.broken);
+    const colliders: Target[] = rocks.map((r, i) => ({ position: r.position, radius: r.radius * 0.92, kind: 'rock', ref: i }));
+    colliders.push(...this.wrecks.colliders, ...this.debris.colliders);
+    world.artifacts.forEach((a, i) => {
+      if (!SEALED_CONTEXTS.has(a.context) || this.progress.found.includes(a.id) || broken.has(targetId('shell', i))) return;
+      this.sealed.add(a.id);
+      colliders.push({ position: a.position, radius: SHELL_RADIUS, kind: 'shell', ref: i });
+      this.fx.addShell(i, new THREE.Vector3(...a.position), SHELL_RADIUS, a.hue);
+    });
+    const live = colliders.filter((c) => {
+      if (!c.kind || c.ref === undefined || !broken.has(targetId(c.kind, c.ref))) return true;
+      if (c.kind === 'rock') this.asteroids.hide(c.ref);
+      else if (c.kind === 'satellite' || c.kind === 'junk') this.debris.hide(c.kind, c.ref);
+      return false;
+    });
+    this.grid = new SpatialHash(600, live);
     this.victoryShown = isComplete(this.progress);
 
     this.hud = createHud();
     this.map = createMap(world, rocks);
     this.ui.prepend(this.hud.el, this.map.el);
     this.hud.setRelics(this.progress.found.length);
+    this.hud.setSalvage(this.progress.salvage);
     this.hud.setSeedLine(t('galaxy', { seed: this.seed }));
 
     this.respawn();
@@ -257,11 +308,13 @@ export class Game {
     this.cursor = { x: 0, y: 0 };
   }
 
-  private async launch(): Promise<void> {
+  /** Audio may only start from a click, so it is created on the first one that needs it. */
+  private ensureAudio(): void {
     if (!this.audio) {
       try {
         this.audio = new AudioEngine(this.seed);
         this.audio.setMusic(this.settings.music);
+        this.audio.setMusicVolume(this.settings.musicVolume);
         this.audio.setSound(this.settings.sound);
         this.audio.start();
       } catch {
@@ -269,12 +322,44 @@ export class Game {
       }
     }
     void this.audio?.resume();
+  }
+
+  private async launch(): Promise<void> {
+    this.ensureAudio();
     this.audio?.click();
     this.state = 'playing';
     this.screens.show('none');
     this.hud.show(true);
     this.regionId = '';
     this.requestLock();
+  }
+
+  /** Infinite flight: its own scene, drawn instead of the system until Esc. */
+  private startInfinite(): void {
+    this.ensureAudio();
+    this.audio?.click();
+    this.screens.show('none');
+    this.hud.show(false);
+    this.map.el.hidden = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.infinite = new InfiniteFlight({ renderer: this.renderer, camera: this.camera, envMap: this.sky.background, stars: this.sky.stars, seed: this.seed, sounds: () => this.audio });
+    this.ui.append(this.infinite.overlay);
+    this.infinite.start();
+    this.renderPass.scene = this.infinite.scene;
+    this.state = 'infinite';
+  }
+
+  private exitInfinite(): void {
+    if (!this.infinite) return;
+    this.infinite.dispose();
+    this.infinite = null;
+    this.renderPass.scene = this.scene;
+    this.audio?.updateShip(0, 0, false);
+    this.camera.up.set(0, 1, 0);
+    this.camera.fov = 70;
+    this.camera.updateProjectionMatrix();
+    this.state = 'menu';
+    this.screens.show('menu');
   }
 
   private resume(): void {
@@ -305,6 +390,7 @@ export class Game {
     this.settings = next;
     writeStore(SETTINGS_KEY, JSON.stringify(next));
     this.audio?.setMusic(next.music);
+    this.audio?.setMusicVolume(next.musicVolume);
     this.audio?.setSound(next.sound);
     this.screens.refresh();
   }
@@ -347,6 +433,13 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if (e.repeat && (e.code === 'KeyM' || e.code === 'Escape')) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
+      if (this.state === 'infinite') {
+        if (e.repeat) return;
+        if (e.code === 'Escape') this.exitInfinite();
+        else if (e.code === 'KeyC') this.infinite?.nextCamera();
+        else if (e.code === 'KeyH') this.infinite?.toggleHints();
+        return;
+      }
       this.keys.add(e.code);
       if (e.code === 'KeyM' || e.code === 'Tab') this.toggleMap();
       if (e.code === 'Escape' && !this.locked) {
@@ -355,7 +448,16 @@ export class Game {
       }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.firing = true;
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.firing = false;
+    });
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.firing = false;
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         this.keys.clear();
@@ -408,6 +510,16 @@ export class Game {
       this.time = this.stillTime;
       this.shake = 0;
       this.nebulae.calm();
+    }
+    if (this.state === 'infinite' && this.infinite) {
+      const info = this.infinite.update(dt);
+      this.sky.update(this.camera, this.renderer.getPixelRatio());
+      this.audio?.updateShip(info.throttle, info.boost, false);
+      this.audio?.setMood(0, info.nebula);
+      this.adaptExposureTo(info.star?.position ?? null, info.star?.radius ?? 0, dt);
+      this.composer.render(dt);
+      if (this.perf) this.endPerfFrame(startedAt, dt);
+      return;
     }
     const simulate = this.state === 'playing' || this.state === 'dead' || this.state === 'victory';
 
@@ -502,6 +614,8 @@ export class Game {
     }
     if (this.hull.destroyed && this.state !== 'dead') this.die();
 
+    this.updateWeapons(dt);
+
     // Relics: pick-up and scanner.
     const neb = nebulaDensityAt([f.position.x, f.position.y, f.position.z], world.nebulae);
     const range = scanRange(neb.density);
@@ -509,12 +623,13 @@ export class Game {
       for (const a of world.artifacts) {
         if (this.progress.found.includes(a.id)) continue;
         const d = f.position.distanceTo(tmpV.set(...a.position));
-        if (d < PICKUP_RADIUS + SHIP_RADIUS) this.pickUp(a.id);
+        // A sealed relic cannot be picked up until its shell is shot open.
+        if (d < PICKUP_RADIUS + SHIP_RADIUS && !this.sealed.has(a.id)) this.pickUp(a.id);
         else if (d < range) {
           if (!this.inScan.has(a.id)) {
             this.inScan.add(a.id);
             this.audio?.ping();
-            this.hud.toast(`<b>${t('signal')}</b>`, 'signal');
+            this.hud.toast(`<b>${t(this.sealed.has(a.id) ? 'signalSealed' : 'signal')}</b>`, 'signal');
           }
         } else if (d > range * 1.15) this.inScan.delete(a.id);
       }
@@ -568,7 +683,130 @@ export class Game {
     }
 
     this.hud.setFlight(f.velocity.length(), f.throttle, this.hull.hp / this.hull.max, f.boost > 0.3);
+    this.hud.setGuns(this.weapon.heat, this.weapon.overheated);
     this.updateMarkers(range);
+    this.updateAim();
+  }
+
+  // --- lasers ------------------------------------------------------------------------------
+
+  private updateWeapons(dt: number): void {
+    const f = this.flight;
+    const trigger = this.state === 'playing' && (this.firing || this.keys.has('KeyF'));
+    const fired = stepWeapon(this.weapon, trigger, dt);
+    if (fired.length > 0) {
+      // Both barrels toe in to meet at a point straight ahead of the nose.
+      const aim = tmpV2.copy(forwardOf(f.orientation, tmpV3)).multiplyScalar(WEAPON.convergence).add(f.position);
+      for (const side of fired) {
+        const mount = GUN_MOUNTS[side]!;
+        const muzzle = new THREE.Vector3(mount[0], mount[1], mount[2]).applyQuaternion(f.orientation).add(f.position);
+        const dir = tmpV3.copy(aim).sub(muzzle).normalize();
+        this.bolts.push({
+          x: muzzle.x,
+          y: muzzle.y,
+          z: muzzle.z,
+          vx: dir.x * WEAPON.boltSpeed + f.velocity.x,
+          vy: dir.y * WEAPON.boltSpeed + f.velocity.y,
+          vz: dir.z * WEAPON.boltSpeed + f.velocity.z,
+          life: WEAPON.boltLife,
+        });
+        this.fx.muzzle(muzzle);
+        this.audio?.laser(side === 0 ? -0.35 : 0.35);
+      }
+    }
+    if (this.weapon.overheated && !this.wasOverheated) this.hud.toast(`<b>${t('overheat')}</b>`, 'signal');
+    this.wasOverheated = this.weapon.overheated;
+
+    for (const hit of stepBolts(this.bolts, dt, (ax, ay, az, bx, by, bz) => this.firstHit(ax, ay, az, bx, by, bz))) this.onBoltHit(hit);
+    this.fx.setBolts(this.bolts);
+    this.updateLoot(dt);
+  }
+
+  /** The first solid thing on a bolt's path this frame: a target, or a planet or the star (null). */
+  private firstHit(ax: number, ay: number, az: number, bx: number, by: number, bz: number): { t: number; target: Target | null } | null {
+    let best: { t: number; target: Target | null } | null = null;
+    const half = Math.hypot(bx - ax, by - ay, bz - az) / 2 + WEAPON.hitRadius;
+    for (const c of this.grid.query((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, half, this.hitScratch)) {
+      const t = segmentSphere(ax, ay, az, bx, by, bz, c.position[0], c.position[1], c.position[2], c.radius + WEAPON.hitRadius);
+      if (t !== null && (!best || t < best.t)) best = { t, target: c };
+    }
+    for (const p of this.world.planets) {
+      const t = segmentSphere(ax, ay, az, bx, by, bz, p.position[0], p.position[1], p.position[2], p.radius);
+      if (t !== null && (!best || t < best.t)) best = { t, target: null };
+    }
+    const sun = this.world.sun;
+    const ts = segmentSphere(ax, ay, az, bx, by, bz, sun.position[0], sun.position[1], sun.position[2], sun.radius);
+    if (ts !== null && (!best || ts < best.t)) best = { t: ts, target: null };
+    return best;
+  }
+
+  private onBoltHit(hit: BoltHit<Target>): void {
+    const at = new THREE.Vector3(hit.x, hit.y, hit.z);
+    const target = hit.target;
+    const metal = target !== null && target.kind !== 'rock' && target.kind !== 'shell';
+    this.fx.sparks(at, new THREE.Vector3(-hit.dirX, -hit.dirY, -hit.dirZ), 10, metal ? METAL_SPARK : ROCK_SPARK);
+    const near = 1 - at.distanceTo(this.flight.position) / 3000;
+    if (near > 0) this.audio?.hit(near);
+    if (!target?.kind || target.ref === undefined) return;
+    const hp = targetHp(target);
+    if (!Number.isFinite(hp)) return;
+    const taken = (this.damage.get(target) ?? 0) + 1;
+    if (taken < hp) this.damage.set(target, taken);
+    else this.breakTarget(target);
+  }
+
+  private breakTarget(target: Target): void {
+    const kind = target.kind!;
+    const ref = target.ref!;
+    this.damage.delete(target);
+    this.grid.remove(target);
+    markBroken(this.progress, targetId(kind, ref));
+    const at = new THREE.Vector3(...target.position);
+    let radius = target.radius;
+    let color = METAL_DEBRIS;
+    if (kind === 'rock') {
+      this.asteroids.hide(ref);
+      radius = this.rocks[ref]?.radius ?? radius;
+      color = ROCK_DEBRIS;
+    } else if (kind === 'satellite' || kind === 'junk') {
+      this.debris.hide(kind, ref);
+    } else {
+      this.fx.hideShell(ref);
+      color = SHELL_DEBRIS;
+      const a = this.world.artifacts[ref];
+      if (a) this.sealed.delete(a.id);
+      this.hud.toast(`<b>${t('shellBroken')}</b>`, 'found');
+    }
+    this.fx.shatter(at, radius, color);
+    const near = 1 - at.distanceTo(this.flight.position) / 4000;
+    if (near > 0) this.audio?.shatter((radius / 140) * near);
+    const kindOfLoot = lootOf(this.seed, kind, ref, radius);
+    if (kindOfLoot) {
+      const drift = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(16);
+      this.loot.push(this.fx.spawnLoot(kindOfLoot, at, drift));
+    }
+  }
+
+  /** Salvage drifts until the ship comes near, then flies to it and is collected. */
+  private updateLoot(dt: number): void {
+    const f = this.flight;
+    for (let i = this.loot.length - 1; i >= 0; i--) {
+      const item = this.loot[i]!;
+      const d = item.root.position.distanceTo(f.position);
+      if (this.state === 'playing' && d < SHIP_RADIUS + 16) {
+        this.loot.splice(i, 1);
+        this.fx.removeLoot(item);
+        this.progress.salvage++;
+        this.hud.setSalvage(this.progress.salvage);
+        this.hud.toast(`${t('salvage')}: <b>${t(item.kind === 'core' ? 'lootCore' : 'lootCrystal')}</b>`, 'found');
+        this.audio?.salvage();
+        continue;
+      }
+      if (this.state === 'playing' && d < 400) {
+        const pull = tmpV.copy(f.position).sub(item.root.position).normalize().multiplyScalar(60 + (400 - d) * 0.8).add(f.velocity);
+        item.v.lerp(pull, approach(4, dt));
+      } else item.v.multiplyScalar(Math.exp(-0.4 * dt));
+    }
   }
 
   private cssColorOf(id: string, color: number): string {
@@ -647,6 +885,14 @@ export class Game {
     this.hud.setMarkers(markers);
   }
 
+  /** The red cross where both barrels converge. */
+  private updateAim(): void {
+    const f = this.flight;
+    const p = tmpV.copy(forwardOf(f.orientation, tmpV2)).multiplyScalar(WEAPON.convergence).add(f.position).project(this.camera);
+    const visible = this.state === 'playing' && p.z < 1 && Math.abs(p.x) < 1 && Math.abs(p.y) < 1;
+    this.hud.setAim((p.x * 0.5 + 0.5) * window.innerWidth, (-p.y * 0.5 + 0.5) * window.innerHeight, visible);
+  }
+
   private updateCamera(dt: number): void {
     const f = this.flight;
     this.camQuat.slerp(f.orientation, approach(4.5, dt));
@@ -688,6 +934,8 @@ export class Game {
     for (const p of this.planets) p.update(t);
     this.nebulae.update(t, dt);
     this.wrecks.update(t);
+    this.debris.update(t, dt);
+    this.fx.update(dt, t);
     this.artifacts.update(t, dt, window.innerHeight * this.renderer.getPixelRatio());
     this.ship.root.position.copy(f.position);
     this.ship.root.quaternion.copy(f.orientation);
@@ -707,11 +955,19 @@ export class Game {
   /** Eye adaptation near the star: lower exposure and bloom the more of the view it fills. */
   private exposure = 1;
   private adaptExposure(dt: number): void {
-    const toSun = tmpV2.set(...this.world.sun.position).sub(this.camera.position);
-    const distance = toSun.length();
-    const fwd = tmpV3.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const offAxis = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun.normalize()), -1, 1));
-    const target = targetExposure({ starRadius: this.world.sun.radius, distance, offAxis, fov: this.camera.fov, aspect: this.camera.aspect });
+    this.adaptExposureTo(tmpV.set(...this.world.sun.position), this.world.sun.radius, dt);
+  }
+
+  /** The same for any star (or none, which relaxes toward normal exposure). */
+  private adaptExposureTo(star: THREE.Vector3 | null, radius: number, dt: number): void {
+    let target = 1;
+    if (star) {
+      const toSun = tmpV2.copy(star).sub(this.camera.position);
+      const distance = toSun.length();
+      const fwd = tmpV3.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+      const offAxis = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun.normalize()), -1, 1));
+      target = targetExposure({ starRadius: radius, distance, offAxis, fov: this.camera.fov, aspect: this.camera.aspect });
+    }
     // A pinned clock snaps straight to the target so repeated captures match exactly.
     this.exposure = this.stillTime !== null ? target : stepExposure(this.exposure, target, dt);
     this.renderer.toneMappingExposure = this.exposure;
@@ -770,6 +1026,15 @@ export class Game {
       },
       aim(x: number, y: number) {
         self.cursor = { x, y };
+      },
+      fire(on: boolean) {
+        self.firing = on;
+      },
+      get rocks() {
+        return self.rocks;
+      },
+      get infinite() {
+        return self.infinite;
       },
       map(open: boolean) {
         if (open !== (self.state === 'map')) self.toggleMap();
@@ -846,6 +1111,11 @@ function supportsReversedDepth(): boolean {
     return false;
   }
 }
+const ROCK_SPARK = new THREE.Color(2.4, 1.3, 0.6);
+const METAL_SPARK = new THREE.Color(2.2, 2.0, 1.6);
+const ROCK_DEBRIS = new THREE.Color(0.55, 0.5, 0.45);
+const METAL_DEBRIS = new THREE.Color(0.62, 0.64, 0.68);
+const SHELL_DEBRIS = new THREE.Color(0.24, 0.24, 0.27);
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));

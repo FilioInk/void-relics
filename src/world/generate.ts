@@ -72,6 +72,18 @@ export type Artifact = {
 
 export type Asteroid = { position: Vec3; radius: number; variant: number; rotation: Vec3; shade: number };
 
+/** A broken orbital station: a truss spine with modules and solar wings, or a torn wheel. */
+export type Station = { id: string; name: string; kind: 'spine' | 'ring'; position: Vec3; size: number; pieces: number; seed: number };
+
+/** A cluster of dead satellites drifting together, with loose panels around them. */
+export type Graveyard = { id: string; name: string; center: Vec3; radius: number; satellites: number; seed: number };
+
+/** A ring of orbital junk around the Earth-like world: panels, truss, tanks, foil. */
+export type JunkRing = { id: string; planetId: string; center: Vec3; inner: number; outer: number; tilt: number; yaw: number; count: number; seed: number };
+
+/** One loose bit of junk, for the renderer and the collision grid alike. */
+export type Junk = { position: Vec3; size: number; variant: number; rotation: Vec3; shade: number };
+
 export type World = {
   seed: number;
   radius: number;
@@ -83,6 +95,9 @@ export type World = {
   wrecks: Wreck[];
   artifacts: Artifact[];
   spawn: { position: Vec3; lookAt: Vec3 };
+  stations: Station[];
+  graveyards: Graveyard[];
+  junk: JunkRing | null;
 };
 
 export const WORLD_RADIUS = 60000;
@@ -90,6 +105,7 @@ export const ARTIFACT_COUNT = 20;
 export const ASTEROID_VARIANTS = 6;
 export const HINT_RADIUS = 4500;
 export const MIN_ARTIFACT_SPACING = 2500;
+export const JUNK_VARIANTS = 4;
 
 export const dist = (a: Vec3, b: Vec3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -104,7 +120,7 @@ const PLANET_PLAN: ReadonlyArray<{ orbit: number; kinds: PlanetKind[] }> = [
   { orbit: 53000, kinds: ['ice', 'rocky'] },
 ];
 
-const PALETTES: Record<PlanetKind, Array<[number, number, number]>> = {
+export const PALETTES: Record<PlanetKind, Array<[number, number, number]>> = {
   lava: [[0x1a0d0a, 0x3a1a10, 0xff5a1a], [0x140c0c, 0x402018, 0xffa020]],
   desert: [[0x8a5a32, 0xc8955a, 0xe9cf9a], [0x7a3e22, 0xb8683c, 0xe6b57e]],
   rocky: [[0x3c3a38, 0x6e6660, 0xa8a098], [0x4a3c34, 0x7c6a5a, 0xb0a08c]],
@@ -113,7 +129,7 @@ const PALETTES: Record<PlanetKind, Array<[number, number, number]>> = {
   ice: [[0x6a8aa8, 0xb8d4e8, 0xf4fbff], [0x5a7a9a, 0xa0c8d8, 0xeaf6fa]],
 };
 
-const ATMOSPHERE: Record<PlanetKind, number> = {
+export const ATMOSPHERE: Record<PlanetKind, number> = {
   lava: 0xff6a2a,
   desert: 0xffc890,
   rocky: 0x9aa4b0,
@@ -122,7 +138,7 @@ const ATMOSPHERE: Record<PlanetKind, number> = {
   ice: 0xa8e0ff,
 };
 
-const RADIUS_RANGE: Record<PlanetKind, [number, number]> = {
+export const RADIUS_RANGE: Record<PlanetKind, [number, number]> = {
   lava: [500, 800],
   desert: [700, 1000],
   rocky: [600, 950],
@@ -131,7 +147,7 @@ const RADIUS_RANGE: Record<PlanetKind, [number, number]> = {
   ice: [900, 1400],
 };
 
-const NEBULA_COLORS: Array<[number, number]> = [
+export const NEBULA_COLORS: Array<[number, number]> = [
   [0xd03cff, 0x5a2cff],
   [0x18d0c8, 0x2a6cff],
   [0xff7a2a, 0xd0204a],
@@ -319,8 +335,123 @@ export function generateWorld(seed: number): World {
     spawn = onOrbit(srng, srng.range(36000, 42000), 300);
   }
 
-  return { seed, radius: WORLD_RADIUS, sun, planets, belt, clusters, nebulae, wrecks, artifacts: placed, spawn: { position: spawn, lookAt: [0, 0, 0] } };
+  const base = { seed, radius: WORLD_RADIUS, sun, planets, belt, clusters, nebulae, wrecks, artifacts: placed, spawn: { position: spawn, lookAt: [0, 0, 0] as Vec3 } };
+  // Debris comes last and from its own stream, so adding it moved nothing that was already there.
+  return { ...base, ...placeDebris(base, root.fork('debris'), nameRng) };
 }
+
+type BaseWorld = Omit<World, 'stations' | 'graveyards' | 'junk'>;
+
+/** Outside every asteroid field and the belt, where no rock can be. */
+function clearOfRocks(p: Vec3, margin: number, w: BaseWorld): boolean {
+  if (w.clusters.some((c) => dist(p, c.center) < c.radius + margin)) return false;
+  const r = Math.hypot(p[0], p[2]);
+  const inBeltRing = r > w.belt.inner - margin && r < w.belt.outer + margin;
+  return !(inBeltRing && Math.abs(p[1]) < w.belt.thickness * 2 + margin);
+}
+
+function placeDebris(w: BaseWorld, rng: Rng, nameRng: Rng): Pick<World, 'stations' | 'graveyards' | 'junk'> {
+  const { sun, planets } = w;
+  const taken: Array<{ p: Vec3; r: number }> = [];
+  const clear = (p: Vec3, r: number): boolean =>
+    dist(p, sun.position) > sun.warnRadius + r + 1500 &&
+    Math.hypot(p[0], p[2]) < WORLD_RADIUS * 0.95 &&
+    !insideAnyPlanet(p, planets, r + 600) &&
+    clearOfRocks(p, r + 400, w) &&
+    w.wrecks.every((x) => dist(p, x.position) > x.size * 3 + r + 800) &&
+    w.artifacts.every((a) => dist(p, a.position) > r + 400) &&
+    dist(p, w.spawn.position) > r + 3000 &&
+    taken.every((t) => dist(p, t.p) > t.r + r + 1500);
+
+  // Stations: one parked by a gas giant, one by a rocky world, the rest in open space.
+  const stations: Station[] = [];
+  const want = rng.int(3, 4);
+  const gas = planets.filter((p) => p.kind === 'gas');
+  const solid = planets.filter((p) => p.kind !== 'gas' && p.kind !== 'terran');
+  for (let i = 0; stations.length < want && i < 300; i++) {
+    const size = rng.range(150, 280);
+    const host = stations.length === 0 ? gas[0] : stations.length === 1 ? solid[solid.length - 1] : undefined;
+    const p: Vec3 = host
+      ? add(host.position, scale(rng.onSphere(), host.radius * (host.ring ? 2.8 : 1.8) + rng.range(900, 2200)))
+      : onOrbit(rng, rng.range(13000, 55000), 2500);
+    if (!clear(p, size)) continue;
+    taken.push({ p, r: size });
+    stations.push({ id: `station-${stations.length}`, name: makeName(nameRng), kind: rng.chance(0.45) ? 'ring' : 'spine', position: p, size, pieces: rng.int(3, 6), seed: rng.int(1, 1e9) });
+  }
+
+  // Satellite graveyards: half in high orbits, half adrift.
+  const graveyards: Graveyard[] = [];
+  const wantG = rng.int(10, 14);
+  for (let i = 0; graveyards.length < wantG && i < 600; i++) {
+    const radius = rng.range(220, 500);
+    const host = rng.chance(0.5) ? rng.pick(planets) : undefined;
+    const p: Vec3 = host
+      ? add(host.position, scale(rng.onSphere(), host.radius * (host.ring ? 2.9 : 2.2) + rng.range(600, 2500)))
+      : onOrbit(rng, rng.range(12000, 56000), 3000);
+    if (!clear(p, radius)) continue;
+    taken.push({ p, r: radius });
+    graveyards.push({ id: `graveyard-${graveyards.length}`, name: makeName(nameRng), center: p, radius, satellites: rng.int(5, 11), seed: rng.int(1, 1e9) });
+  }
+
+  // A ring of junk around the Earth-like world, tilted off its equator.
+  const home = planets.find((p) => p.kind === 'terran');
+  const junk: JunkRing | null = home
+    ? { id: 'junk', planetId: home.id, center: home.position, inner: home.radius * 1.55, outer: home.radius * 2.25, tilt: rng.range(0.12, 0.45), yaw: rng.range(0, Math.PI * 2), count: rng.int(900, 1200), seed: rng.int(1, 1e9) }
+    : null;
+
+  return { stations, graveyards, junk };
+}
+
+/** The plane of the junk ring: unit normal, from its tilt and yaw. */
+export function junkNormal(ring: JunkRing): Vec3 {
+  return [Math.sin(ring.tilt) * Math.cos(ring.yaw), Math.cos(ring.tilt), Math.sin(ring.tilt) * Math.sin(ring.yaw)];
+}
+
+/** Every piece of loose junk: the planet's ring and the panels drifting around each graveyard. */
+export function generateJunk(world: World): Junk[] {
+  const out: Junk[] = [];
+  const keep = (p: Vec3, size: number): boolean =>
+    clearOfRocks(p, size + 50, world) &&
+    world.artifacts.every((a) => dist(a.position, p) > size + 150) &&
+    world.planets.every((pl) => dist(pl.position, p) > pl.radius * 1.05 + size);
+  const ring = world.junk;
+  if (ring) {
+    const rng = createRng(ring.seed);
+    const n = junkNormal(ring);
+    // Two axes in the ring plane.
+    const u = normalize(cross(n, Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+    const v = cross(n, u);
+    for (let i = 0; i < ring.count; i++) {
+      const a = rng.range(0, Math.PI * 2);
+      // Denser in the middle of the band.
+      const t = (rng.next() + rng.next()) / 2;
+      const r = ring.inner + (ring.outer - ring.inner) * t;
+      const h = rng.gauss() * (ring.outer - ring.inner) * 0.05;
+      const p: Vec3 = [
+        ring.center[0] + (u[0] * Math.cos(a) + v[0] * Math.sin(a)) * r + n[0] * h,
+        ring.center[1] + (u[1] * Math.cos(a) + v[1] * Math.sin(a)) * r + n[1] * h,
+        ring.center[2] + (u[2] * Math.cos(a) + v[2] * Math.sin(a)) * r + n[2] * h,
+      ];
+      const size = 1.5 + 14 * Math.pow(rng.next(), 2.5);
+      const piece: Junk = { position: p, size, variant: rng.int(0, JUNK_VARIANTS - 1), rotation: [rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)], shade: rng.range(0.6, 1) };
+      if (keep(p, size)) out.push(piece);
+    }
+  }
+  for (const g of world.graveyards) {
+    const rng = createRng(g.seed ^ 0x7a11);
+    const count = rng.int(20, 40);
+    for (let i = 0; i < count; i++) {
+      const p = add(g.center, scale(rng.inSphere(), g.radius * 1.3));
+      const size = 1.5 + 9 * Math.pow(rng.next(), 2);
+      const piece: Junk = { position: p, size, variant: rng.int(0, JUNK_VARIANTS - 1), rotation: [rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)], shade: rng.range(0.6, 1) };
+      if (keep(p, size)) out.push(piece);
+    }
+  }
+  return out;
+}
+
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const normalize = (a: Vec3): Vec3 => scale(a, 1 / Math.hypot(a[0], a[1], a[2]));
 
 /** Power-law asteroid size: lots of pebbles, a few mountains. */
 function asteroidRadius(rng: Rng, min: number, max: number): number {

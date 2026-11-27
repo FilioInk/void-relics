@@ -48,7 +48,14 @@ function rockGeometry(seed: number): THREE.BufferGeometry {
   return geo;
 }
 
-export type AsteroidView = { group: THREE.Group; dispose(): void };
+export type AsteroidView = {
+  group: THREE.Group;
+  /** Stops drawing one rock (by its index in the list it was built from), e.g. once shot apart. */
+  hide(index: number): void;
+  dispose(): void;
+};
+
+const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
 
 const CHUNK = 9000;
 
@@ -57,17 +64,18 @@ export function createAsteroids(rocks: Asteroid[], seed: number): AsteroidView {
   const geos = Array.from({ length: ASTEROID_VARIANTS }, (_, i) => rockGeometry(seed * 31 + i * 977));
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0.04, flatShading: true });
 
-  // chunk key → variant → rocks
-  const buckets = new Map<string, Asteroid[][]>();
-  for (const r of rocks) {
+  // chunk key → variant → rock indices
+  const buckets = new Map<string, number[][]>();
+  rocks.forEach((r, index) => {
     const key = `${Math.floor(r.position[0] / CHUNK)},${Math.floor(r.position[1] / CHUNK)},${Math.floor(r.position[2] / CHUNK)}`;
     let b = buckets.get(key);
     if (!b) {
       b = Array.from({ length: ASTEROID_VARIANTS }, () => []);
       buckets.set(key, b);
     }
-    b[r.variant]!.push(r);
-  }
+    b[r.variant]!.push(index);
+  });
+  const slots: Array<{ mesh: THREE.InstancedMesh; i: number }> = new Array(rocks.length);
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -81,7 +89,9 @@ export function createAsteroids(rocks: Asteroid[], seed: number): AsteroidView {
     variants.forEach((list, variant) => {
       if (list.length === 0) return;
       const mesh = new THREE.InstancedMesh(geos[variant]!, material, list.length);
-      list.forEach((r, i) => {
+      list.forEach((index, i) => {
+        const r = rocks[index]!;
+        slots[index] = { mesh, i };
         e.set(...r.rotation);
         q.setFromEuler(e);
         s.setScalar(r.radius);
@@ -100,6 +110,12 @@ export function createAsteroids(rocks: Asteroid[], seed: number): AsteroidView {
 
   return {
     group,
+    hide(index) {
+      const slot = slots[index];
+      if (!slot) return;
+      slot.mesh.setMatrixAt(slot.i, HIDDEN);
+      slot.mesh.instanceMatrix.needsUpdate = true;
+    },
     dispose() {
       geos.forEach((g) => g.dispose());
       material.dispose();

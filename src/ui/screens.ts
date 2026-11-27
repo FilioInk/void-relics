@@ -9,6 +9,7 @@ export type ScreenName = 'loading' | 'menu' | 'pause' | 'dead' | 'victory' | 'no
 export type ScreenHandlers = {
   onLaunch(): void;
   onNewGalaxy(): void;
+  onInfinite(): void;
   onResume(): void;
   onKeepFlying(): void;
   onSettings(next: Settings): void;
@@ -27,10 +28,13 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
       h('button', { class: `toggle ${on ? 'on' : ''}`, text: on ? t('on') : t('off'), onclick: () => flip() });
     const sens = h('input', { type: 'range', min: 0.3, max: 2.5, step: 0.05, value: s.sensitivity });
     sens.addEventListener('change', () => change({ sensitivity: Number(sens.value) }));
+    const vol = h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: s.musicVolume });
+    vol.addEventListener('change', () => change({ musicVolume: Number(vol.value) }));
     return h(
       'div',
       { class: 'settings' },
       h('label', { text: t('music') }), toggle(s.music, () => change({ music: !s.music })),
+      h('label', { text: t('musicVolume') }), vol,
       h('label', { text: t('sound') }), toggle(s.sound, () => change({ sound: !s.sound })),
       h('label', { text: t('sensitivity') }), sens,
       h('label', { text: t('invertY') }), toggle(s.invertY, () => change({ invertY: !s.invertY })),
@@ -41,7 +45,7 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
     h(
       'ul',
       { class: 'controls' },
-      ...(['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause'] as const).map((k) => h('li', { text: t(k) })),
+      ...(['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlFire', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause'] as const).map((k) => h('li', { text: t(k) })),
     );
 
   const build = (name: ScreenName): HTMLElement | null => {
@@ -63,6 +67,7 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
               'div',
               { class: 'buttons' },
               h('button', { class: 'btn', text: st.found > 0 ? t('continue', { found: st.found }) : t('launch'), onclick: () => handlers.onLaunch() }),
+              h('button', { class: 'btn ghost', text: t('infinite'), onclick: () => handlers.onInfinite() }),
               h('button', { class: 'btn ghost', text: t('newGalaxy'), onclick: () => handlers.onNewGalaxy() }),
             ),
             h('div', { class: 'section-title', text: t('controlsTitle') }),

@@ -64,7 +64,8 @@ const VERT = /* glsl */ `
   varying vec3 vColor;
   varying float vAlpha;
   void main() {
-    vec4 center = viewMatrix * vec4(iOffset, 1.0);
+    // Through modelViewMatrix, so a nebula built around its own origin can be moved as a whole.
+    vec4 center = modelViewMatrix * vec4(iOffset, 1.0);
     float dc = length(center.xyz);
     float ang = iRot + uTime * 0.006 * (fract(iVariant * 7.31 + iRot) - 0.5);
     float c = cos(ang);
@@ -103,9 +104,18 @@ export type NebulaView = {
   calm(): void;
 };
 
+/** Baking the smoke takes a while; infinite flight builds nebulae all the time, so keep one per seed. */
+const atlases = new Map<number, THREE.DataTexture>();
+
 export function createNebulae(nebulae: Nebula[], seed: number): NebulaView {
   const group = new THREE.Group();
-  const atlas = bakeSmokeAtlas(seed ^ 0x5409e);
+  const key = seed ^ 0x5409e;
+  let atlas = atlases.get(key);
+  if (!atlas) {
+    atlas = bakeSmokeAtlas(key);
+    atlas.userData['shared'] = true;
+    atlases.set(key, atlas);
+  }
   const quad = new THREE.PlaneGeometry(1, 1);
   const flashes: Array<{ uniform: { value: THREE.Vector4 }; next: number; centers: THREE.Vector3[]; rng: ReturnType<typeof createRng> }> = [];
   const timeUniforms: Array<{ value: number }> = [];

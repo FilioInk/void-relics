@@ -18,7 +18,7 @@ npm run preview      # serve dist/ locally
 ```
 
 URL parameters: `?seed=<integer>` picks the galaxy (default 1337), `?debug=1` exposes
-`window.__vr` (teleport, press keys, aim, open the map) for poking the game from the console.
+`window.__vr` (teleport, press keys, aim, fire, open the map) for poking the game from the console.
 `?perf=1` shows a corner readout: FPS, frame / CPU / GPU ms (average and p95 over the last 240
 frames), draw calls, triangles and shader programs from `renderer.info`.
 
@@ -52,16 +52,27 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 ## Layout
 
 - `src/core/` — seeded RNG and CPU noise.
+- `src/infinite/` — infinite flight: `director.ts` (the endless path and what each 6 km segment
+  holds, pure and tested), `stream.ts` (builds a segment with the regular `src/render/`
+  builders, a few things per frame, and frees it behind the ship), `flight.ts` (autopilot,
+  cameras, origin shifts, autopilot guns, captions).
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
-  wrecks, the 20 relics, spawn), `regions.ts` (where the ship is, nebula density, scan range),
+  wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
+  `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
   `names.ts` (generated names).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
-  heat, collisions, hull), `progress.ts` (relics found, saves), `settings.ts`, `aim.ts`,
-  `spatialHash.ts`; `game.ts` wires it all to the scene, HUD and audio and runs the loop.
+  heat, collisions, hull), `progress.ts` (relics found, salvage, broken targets, saves),
+  `weapons.ts` (rate of fire, heat; the muzzles come from `ship.ts`), `targets.ts` (what bolts hit, how many hits
+  things take, deterministic loot, sealed relics), `settings.ts`, `aim.ts`, `spatialHash.ts`;
+  `game.ts` wires it all to the scene, HUD and audio and runs the loop.
 - `src/render/` — three.js builders: sky, sun, planets, asteroids, nebula smoke, wrecks,
-  relics, the player ship, speed dust. Shared GLSL in `glsl.ts`.
+  orbital debris (`debris.ts`: stations, instanced satellites, junk, distance glints), relics,
+  the player ship (`ship.ts`, skinned by `plating.ts`), speed dust, laser effects (`combat.ts`:
+  bolts, sparks, fragments, salvage, relic shells — all pooled). Shared GLSL in `glsl.ts`.
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
-  the scales and chord progressions.
+  the scales and chord progressions; `rocket.ts` is the engine's pure maths (noise colours,
+  crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
+  which also runs in an `OfflineAudioContext` to render a listening demo.
 - `src/ui/` — HUD, system map, menus. `src/text.ts` — every user-facing string.
 - `.github/workflows/` — `ci.yml` runs verify on every PR; `deploy.yml` publishes to Pages.
 
@@ -77,16 +88,32 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   scene without bloom; a pass after the output would need the glow added differently.
 - **The fog never leaves the scene.** Outside a nebula its density is 0. Setting `scene.fog`
   to `null` (or a new fog object) recompiles every fog-aware material: a visible hitch.
+- **Infinite flight never feeds the GPU big numbers.** It simulates in absolute coordinates
+  but draws relative to an origin that jumps to the ship every 40 km; every object is built
+  around its own centre and moved, and world-space uniforms (`uSun`, `uCenter`) move with it.
+  A new shader that reads world positions must go through `modelMatrix`/`modelViewMatrix`
+  (the nebula once used `viewMatrix` directly and could not be moved), and a builder that
+  bakes world positions into uniforms has to register them in the chunk's `vectors`.
+- **One light per star would recompile everything.** Three.js rebuilds every material's
+  shader when the number of lights changes, so infinite flight drops each star's PointLight
+  and moves a single DirectionalLight instead.
 - **Tests run TypeScript straight on Node** (type stripping). Imports carry the `.ts`
   extension, type-only imports must be `import type`, and `erasableSyntaxOnly` forbids enums
   and constructor parameter properties.
 - **Changing `generate.ts` moves every galaxy.** Saves are keyed by seed and store relic ids;
   if the relic layout changes, bump the `v1` in `storageKey()` so old saves are not applied to
-  new positions.
+  new positions. To add content without moving anything, draw it from a new `root.fork(...)`
+  and place it after the relics, as the debris does; `generate.test.ts` compares the layout with
+  `src/world/fixtures/before-debris.json` and fails if it shifts. Compare floats with a
+  tolerance, never by exact hash: `Math.sin` and friends differ in the last bit between a Mac
+  and the Linux CI.
 - **A hidden or minimised window can report 0×0.** `onResize()` skips it, and `aimOf()`,
   `stepFlight()` and `stepExposure()` treat non-finite values as neutral: one NaN in the flight
   state or the exposure used to stick forever (frozen ship, black screen). Keep new per-frame
   state just as defensive.
+- **Targets are identified by index.** A broken rock is saved as `rock:<index into
+  generateAsteroids()>`, a satellite or junk piece by its index in the debris lists, a shell by
+  its relic's index. Anything that reorders those lists breaks old saves' `broken` field.
 - **Pointer lock is optional.** Inside iframes or some embedded browsers it is refused; the game
   then steers by the real cursor position. Esc while locked releases the lock and pauses.
 - **Audio starts only after a click** (browser autoplay rules): the `AudioEngine` is created in

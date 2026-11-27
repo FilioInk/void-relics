@@ -24,6 +24,11 @@ audio files.
 - **Four nebulae** — coloured smoke that cuts visibility, halves the scanner range and now and
   then flashes with lightning.
 - **Derelict wrecks** — torn hulls with flickering windows, sparks and a cloud of debris.
+- **Station ruins** — a broken truss station with modules and solar wings, or a torn habitat
+  wheel, drifting apart in slow tumbles; some portholes and beacons still have power.
+- **Satellite graveyards** — clusters of dead satellites (gold foil, solar wings, dishes)
+  tumbling among loose panels, and a **debris ring** of junk around the Earth-like world that
+  glints from orbit.
 - **20 relics**: in the fields, in the belt, inside nebulae, by the wrecks, in planetary orbits,
   in deep space, and one dangerously close to the star.
 
@@ -35,6 +40,7 @@ audio files.
 | W | Thrust. Let go and the ship stops |
 | S | Brake / reverse |
 | Space | Boost |
+| Left mouse / F | Fire lasers |
 | A / D | Strafe |
 | Q / E | Roll |
 | M (or Tab) | System map |
@@ -44,9 +50,27 @@ A relic shows from far away as a faint pulsing point of light, and the scanner p
 signal within ~6.5 km (half that inside a nebula). On the map, every missing relic is drawn as a
 circle it lies somewhere inside. Progress is saved in the browser.
 
+**Lasers.** Twin wing guns fire red bolts at eight shots a second; hold too long and they
+overheat and lock until they cool. The red cross ahead of the nose is where both barrels meet.
+Smaller rocks (up to ~140 m), satellites and loose junk break apart under fire — the
+mountains and station hulls do not. Some of them hold **salvage** (void crystals, data cores)
+that drifts out and flies to the ship. The relics in asteroid fields and by the wrecks are
+**sealed in rock**: the scanner finds them, but you have to shoot the shell open first. What
+you break stays broken.
+
 `?seed=12345` in the URL gives a different galaxy; the **New galaxy** button does the same with a
 random number. `?perf=1` shows frame rate, frame / CPU / GPU time and draw-call counts in the
 corner.
+
+## Infinite flight
+
+**Infinite flight** in the menu is a screensaver of a mode: the ship flies itself down an endless
+path while asteroid fields, nebulae, planets (some ringed, some with a moon), stars, station
+ruins and satellite graveyards are generated ahead of it and dropped behind. The autopilot
+slows through fields and ruins, opens up across empty space, and in fields picks off a rock now
+and then. The camera cuts between a chase view, a slow orbit, fly-bys, a wide shot and the
+cockpit. **C** changes the camera, **H** hides the hints and captions, **Esc** goes back to the
+menu. The journey is fixed by the galaxy seed.
 
 ## Run it
 
@@ -69,14 +93,21 @@ Source to **GitHub Actions**.
 ## How it works
 
 - `src/world/generate.ts` — the whole system as data from the seed: orbits, belt, fields,
-  nebulae, wrecks, relics, spawn point. Covered by tests (determinism, exactly 20 relics, none
-  inside a planet or a rock, and so on).
+  nebulae, wrecks, relics, spawn point, stations, satellite graveyards and the junk ring.
+  Covered by tests (determinism, exactly 20 relics, none inside a planet or a rock, debris
+  clear of everything, old galaxies unchanged by new content, and so on).
 - `src/game/flight.ts` — the arcade flight model: thrust → cruise speed, no thrust → stop,
   boost, turning toward the cursor.
 - `src/render/` — shaders for the planets, the star and the sky; nebula smoke from a baked
-  noise texture; asteroids from displaced icospheres; procedural wrecks and the player ship.
+  noise texture; asteroids from displaced icospheres; procedural wrecks, stations, satellites
+  and junk; the player ship in plating painted at start-up (`plating.ts`: panel seams, rivets,
+  wear, a normal map from the same layout), with a framed canopy, wing cannons and belled
+  nozzles.
 - `src/audio/engine.ts` — generative ambient on Web Audio: slow chords in drifting modes, FM
-  bells with echo, a drone, cosmic wind, a tension layer near the star; plus engine, impact,
-  scanner ping, pickup and explosion sounds.
+  bells with echo, a drone, cosmic wind, a tension layer near the star; plus impact, scanner
+  ping, pickup and explosion sounds. Music plays at 90% by default (Music volume in the menu).
+- `src/audio/rocketVoice.ts` — the rocket engine: no tone, only noise — a brown-noise rumble,
+  a pink-noise roar, exhaust crackle, combustion flutter and soft saturation, plus a whump on
+  ignition and boost and a chuff on cut-off.
 
 Development notes are in [AGENTS.md](AGENTS.md).

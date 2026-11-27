@@ -1,9 +1,19 @@
-export type Settings = { music: boolean; sound: boolean; sensitivity: number; invertY: boolean };
+export type Settings = {
+  music: boolean;
+  /** 0..1 of the full music level. */
+  musicVolume: number;
+  sound: boolean;
+  sensitivity: number;
+  invertY: boolean;
+};
+
+/** Music out of the box plays 10% under its full level. */
+export const DEFAULT_MUSIC_VOLUME = 0.9;
 
 export const SETTINGS_KEY = 'void-relics:settings';
 
 export function defaultSettings(): Settings {
-  return { music: true, sound: true, sensitivity: 1, invertY: false };
+  return { music: true, musicVolume: DEFAULT_MUSIC_VOLUME, sound: true, sensitivity: 1, invertY: false };
 }
 
 /** Saved settings, field by field: one broken value does not throw the rest away. */
@@ -18,8 +28,10 @@ export function parseSettings(raw: string | null, fallback: Settings): Settings 
     return { ...fallback };
   }
   const sens = typeof d['sensitivity'] === 'number' && Number.isFinite(d['sensitivity']) ? Math.min(2.5, Math.max(0.3, d['sensitivity'])) : fallback.sensitivity;
+  const vol = typeof d['musicVolume'] === 'number' && Number.isFinite(d['musicVolume']) ? Math.min(1, Math.max(0, d['musicVolume'])) : fallback.musicVolume;
   return {
     music: typeof d['music'] === 'boolean' ? d['music'] : fallback.music,
+    musicVolume: vol,
     sound: typeof d['sound'] === 'boolean' ? d['sound'] : fallback.sound,
     sensitivity: sens,
     invertY: typeof d['invertY'] === 'boolean' ? d['invertY'] : fallback.invertY,

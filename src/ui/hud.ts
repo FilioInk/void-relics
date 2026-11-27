@@ -46,14 +46,19 @@ export function createHud() {
   const warn = h('div', { class: 'hud-warn' });
   const toasts = h('div', { class: 'toasts' });
   const reticle = h('div', { class: 'reticle' });
+  const aim = h('div', { class: 'aim', hidden: true });
+  const gunHeat = h('div', { class: 'gun-heat' }, h('i'));
+  let lastHeat = -1;
   const ring = h('div', { class: 'steer-ring' });
   const line = h('div', { class: 'steer-line' });
   const cursor = h('div', { class: 'cursor' });
   const markers = h('div');
   const hint = h('div', { class: 'hud-hint' });
-  const topRight = h('div', { class: 'hud-top-right' });
+  const seedLine = h('div');
+  const salvage = h('div', { class: 'salvage', hidden: true });
+  const topRight = h('div', { class: 'hud-top-right' }, seedLine, salvage);
 
-  const el = h('div', { class: 'hud passive', hidden: true }, nebulaTint, heatTint, vignette, markers, ring, line, reticle, cursor, relics, region, topRight, warn, toasts, flight, hint, flash);
+  const el = h('div', { class: 'hud passive', hidden: true }, nebulaTint, heatTint, vignette, markers, ring, line, reticle, aim, gunHeat, cursor, relics, region, topRight, warn, toasts, flight, hint, flash);
 
   const markerPool: HTMLElement[] = [];
   // Everything below runs every frame; the writer skips assignments that change nothing.
@@ -91,7 +96,7 @@ export function createHud() {
     el,
     setWarning,
     setSeedLine(text: string) {
-      topRight.textContent = text;
+      seedLine.textContent = text;
     },
     setRelics(found: number) {
       relicCount.innerHTML = `${found}<small> / ${ARTIFACT_COUNT}</small>`;
@@ -104,6 +109,24 @@ export function createHud() {
         }
       });
       lastFound = found;
+    },
+    setSalvage(count: number) {
+      salvage.hidden = count <= 0;
+      salvage.innerHTML = `${t('salvage')}<b>${count}</b>`;
+    },
+    /** Where the bolts converge, in screen pixels; hidden when off screen or not flying. */
+    setAim(x: number, y: number, visible: boolean) {
+      aim.hidden = !visible;
+      if (visible) aim.style.transform = `translate(${x}px, ${y}px)`;
+    },
+    /** Gun heat 0..1; the bar shows only while the guns are warm. */
+    setGuns(heat: number, overheated: boolean) {
+      const h2 = Math.round(heat * 100);
+      if (h2 === lastHeat && gunHeat.classList.contains('over') === overheated) return;
+      lastHeat = h2;
+      gunHeat.classList.toggle('show', heat > 0.02);
+      gunHeat.classList.toggle('over', overheated);
+      (gunHeat.firstElementChild as HTMLElement).style.width = `${h2}%`;
     },
     setRegion(name: string, sub: string) {
       regionName.textContent = name;
