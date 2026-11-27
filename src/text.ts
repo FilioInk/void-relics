@@ -52,6 +52,7 @@ export const STRINGS = {
   victoryTime: 'Time: {time}',
   keepFlying: 'Keep flying',
   music: 'Music',
+  musicVolume: 'Music volume',
   sound: 'Sound',
   on: 'on',
   off: 'off',
