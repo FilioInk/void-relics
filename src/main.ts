@@ -27,8 +27,8 @@ const ui = document.getElementById('ui') as HTMLElement;
 if (!webglAvailable()) {
   ui.innerHTML = `<div class="loading">${t('noWebgl')}</div>`;
 } else {
-  const debug = new URLSearchParams(window.location.search).has('debug');
-  const game = new Game(canvas, ui, seedFromUrl(), settings, debug);
+  const params = new URLSearchParams(window.location.search);
+  const game = new Game(canvas, ui, seedFromUrl(), settings, params.has('debug'), params.has('perf'));
   game.build().catch((err: unknown) => {
     console.error(err);
     ui.innerHTML = `<div class="loading">${t('noWebgl')}</div>`;

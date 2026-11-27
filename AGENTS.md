@@ -19,6 +19,29 @@ npm run preview      # serve dist/ locally
 
 URL parameters: `?seed=<integer>` picks the galaxy (default 1337), `?debug=1` exposes
 `window.__vr` (teleport, press keys, aim, fire, open the map) for poking the game from the console.
+`?perf=1` shows a corner readout: FPS, frame / CPU / GPU ms (average and p95 over the last 240
+frames), draw calls, triangles and shader programs from `renderer.info`.
+
+### Measuring performance
+
+Use both: `?debug=1&perf=1`. Four fixed benchmark spots exist for every seed
+(`src/game/benchSpots.ts`): `__vr.spot('spawn' | 'nebula' | 'belt' | 'star')` flies there and
+stops.
+
+- **Compare with `__vr.benchSync(frames)`**, not the overlay's FPS. It renders frames back to
+  back and waits for each with a one-pixel read, so it returns the real cost of a frame (CPU and
+  GPU together) at full GPU clock. The overlay's FPS sits at the display's refresh rate whenever
+  the GPU keeps up, its GPU ms reads high while the GPU idles between vsyncs at low clocks, and a
+  hidden or background tab (the desktop app's browser pane when it is not shown) gets 1 frame a
+  second. GPU ms is `null` inside `benchSync` (WebGL withholds timer results until the task ends)
+  and where the browser hides `EXT_disjoint_timer_query_webgl2`.
+- **Other sessions and apps share the GPU.** Take the minimum over several short rounds, and
+  compare two builds by alternating between them (two dev servers, one tab) rather than
+  measuring one now and one later.
+- `__vr.still(t)` pins the clock (no animation, exposure snapped) and `__vr.capture()` resolves
+  to a PNG data URL of the next frame: two captures of the same spot and `t` are pixel-identical,
+  so a rendering change can be diffed exactly. `__vr.renderer` and `__vr.composer` are there for
+  toggling passes from the console; `__vr.perf()` / `__vr.perfReset()` read the overlay's window.
 
 ## Verify
 
@@ -55,6 +78,16 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 
 ## Things that will bite you
 
+- **Every custom shader needs the log-depth chunks.** The scene spans 0.5 m to 400 km. Where
+  the browser has `EXT_clip_control` the renderer uses reversed Z into a 32-bit float depth
+  target (the chunks then compile to nothing); elsewhere it falls back to
+  `logarithmicDepthBuffer`, and a `ShaderMaterial` without `VERT_HEAD/VERT_TAIL/FRAG_HEAD/
+  FRAG_TAIL` from `src/render/glsl.ts` depth-sorts wrongly against everything else there.
+- **Bloom is split across two passes.** `BloomPass` (`src/render/post.ts`) only builds the
+  glow; `BloomOutputPass` adds it during tone mapping. Something inserted between them sees the
+  scene without bloom; a pass after the output would need the glow added differently.
+- **The fog never leaves the scene.** Outside a nebula its density is 0. Setting `scene.fog`
+  to `null` (or a new fog object) recompiles every fog-aware material: a visible hitch.
 - **Infinite flight never feeds the GPU big numbers.** It simulates in absolute coordinates
   but draws relative to an origin that jumps to the ship every 40 km; every object is built
   around its own centre and moved, and world-space uniforms (`uSun`, `uCenter`) move with it.
@@ -64,10 +97,6 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - **One light per star would recompile everything.** Three.js rebuilds every material's
   shader when the number of lights changes, so infinite flight drops each star's PointLight
   and moves a single DirectionalLight instead.
-- **Every custom shader needs the log-depth chunks.** The renderer uses
-  `logarithmicDepthBuffer` (the scene spans 0.5 m to 400 km). A `ShaderMaterial` without
-  `VERT_HEAD/VERT_TAIL/FRAG_HEAD/FRAG_TAIL` from `src/render/glsl.ts` depth-sorts wrongly
-  against everything else.
 - **Tests run TypeScript straight on Node** (type stripping). Imports carry the `.ts`
   extension, type-only imports must be `import type`, and `erasableSyntaxOnly` forbids enums
   and constructor parameter properties.

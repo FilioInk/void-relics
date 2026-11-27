@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createNoise3, fbm3 } from '../core/noise.ts';
 import { createRng } from '../core/rng.ts';
 import { ASTEROID_VARIANTS, type Asteroid } from '../world/generate.ts';
@@ -12,7 +13,13 @@ import { ASTEROID_VARIANTS, type Asteroid } from '../world/generate.ts';
 function rockGeometry(seed: number): THREE.BufferGeometry {
   const rng = createRng(seed);
   const noise = createNoise3(seed);
-  const geo = new THREE.IcosahedronGeometry(1, 3);
+  // Flat shading takes its normals from screen-space derivatives, so normals and uvs are dead
+  // weight; without them the icosphere's shared corners merge and each is shaded once, not ~6×.
+  const base = new THREE.IcosahedronGeometry(1, 3);
+  base.deleteAttribute('normal');
+  base.deleteAttribute('uv');
+  const geo = mergeVertices(base);
+  base.dispose();
   const pos = geo.getAttribute('position') as THREE.BufferAttribute;
   const stretch = new THREE.Vector3(rng.range(0.9, 1.35), rng.range(0.6, 0.95), rng.range(0.75, 1.1));
   const freq = rng.range(1.1, 1.8);
@@ -37,7 +44,7 @@ function rockGeometry(seed: number): THREE.BufferGeometry {
     colors.set([shade, shade * 0.97, shade * 0.93], i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
+  geo.computeBoundingSphere();
   return geo;
 }
 

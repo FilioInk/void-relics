@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { AudioEngine } from '../audio/engine.ts';
 import { InfiniteFlight } from '../infinite/flight.ts';
 import { t, type Key } from '../text.ts';
@@ -10,19 +8,24 @@ import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
 import { createAsteroids, type AsteroidView } from '../render/asteroids.ts';
 import { createCombatFx, type CombatFx, type LootItem } from '../render/combat.ts';
 import { createDebris, type DebrisView } from '../render/debris.ts';
+import { createGpuTimer, type GpuTimer } from '../render/gpuTimer.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { createNebulae, type NebulaView } from '../render/nebula.ts';
 import { createPlanet, type PlanetView } from '../render/planets.ts';
+import { BloomOutputPass, BloomPass } from '../render/post.ts';
 import { GUN_MOUNTS, SHIP_RADIUS, createShip, type ShipView } from '../render/ship.ts';
 import { createSky, type Sky } from '../render/sky.ts';
 import { createSun, type SunView } from '../render/sun.ts';
 import { createWrecks, type WreckView } from '../render/wrecks.ts';
 import { createHud, type Hud, type Marker, type Warning } from '../ui/hud.ts';
 import { createMap, type MapView } from '../ui/map.ts';
+import { createPerfOverlay, type PerfOverlay } from '../ui/perf.ts';
+import { PerfStats } from '../ui/perfStats.ts';
 import { createScreens } from '../ui/screens.ts';
 import { generateAsteroids, generateJunk, generateWorld, type Asteroid, type World } from '../world/generate.ts';
 import { nebulaDensityAt, regionAt, scanRange, type Region } from '../world/regions.ts';
 import { aimOf, moveCursor, steerRadius, type Cursor } from './aim.ts';
+import { BENCH_SPOTS, benchSpot, type BenchSpotName } from './benchSpots.ts';
 import { stepExposure, targetExposure } from './exposure.ts';
 import { approach, createFlightState, forwardOf, stepFlight, type FlightInput, type FlightState } from './flight.ts';
 import { collideSphere, createHull, damageHull, impactDamage, repairHull, sunHeat, tickHull, type Hull } from './hazards.ts';
@@ -52,10 +55,13 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 7.5, 34);
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer;
-  private readonly bloom: UnrealBloomPass;
+  private readonly bloom: BloomPass;
   private readonly renderPass: RenderPass;
   private infinite: InfiniteFlight | null = null;
   private readonly scene = new THREE.Scene();
+  // Fog lives on the scene for the whole session and is only thinned to zero outside nebulae:
+  // swapping it for null at a nebula edge made every material pick a new shader (a hitch).
+  private readonly fog = new THREE.FogExp2(0x000000, 0);
   private readonly camera = new THREE.PerspectiveCamera(70, 1, 0.5, 2_000_000);
   private readonly clock = new THREE.Timer();
   private readonly ui: HTMLElement;
@@ -108,6 +114,12 @@ export class Game {
   private regionTimer = 0;
   private regionId = '';
   private readonly inScan = new Set<string>();
+  // Per-frame scratch, reused so a frame allocates nothing the garbage collector must chase.
+  private readonly input: FlightInput = { aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 };
+  private readonly near: Target[] = [];
+  private readonly markers: Marker[] = [];
+  private readonly markerPool: Marker[] = [];
+  private readonly nebulaCss = new Map<string, string>();
   private time = 0;
   private menuAngle = 0;
   private victoryShown = false;
@@ -116,23 +128,57 @@ export class Game {
   private settings: Settings;
   private readonly debug: boolean;
 
-  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean) {
+  // ?perf=1: frame timing and renderer counters.
+  private readonly perf: PerfStats | null;
+  private perfOverlay: PerfOverlay | null = null;
+  private gpuTimer: GpuTimer | null = null;
+  private readonly gpuSamples: number[] = [];
+  private lastFrameAt = NaN;
+  // ?debug=1: a pinned clock for reproducible screenshots, and a pending canvas capture.
+  private stillTime: number | null = null;
+  private captureNext: ((dataUrl: string) => void) | null = null;
+
+  constructor(canvas: HTMLCanvasElement, ui: HTMLElement, seed: number, settings: Settings, debug: boolean, perf = false) {
     this.ui = ui;
     this.seed = seed;
     this.settings = settings;
     this.debug = debug;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+    this.perf = perf ? new PerfStats() : null;
+    // Depth for a scene from 0.5 m to 400 km: reversed Z into a float depth buffer where the
+    // browser has EXT_clip_control (no fragment-shader depth writes, so early-Z works), and
+    // the logarithmic depth buffer elsewhere.
+    const reversed = supportsReversedDepth();
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      // The scene is drawn into the composer's single-sample target and the canvas only ever
+      // receives one full-screen quad: multisampling it bought nothing but a resolve per frame.
+      antialias: false,
+      reversedDepthBuffer: reversed,
+      logarithmicDepthBuffer: !reversed,
+      powerPreference: 'high-performance',
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    this.composer = new EffectComposer(this.renderer);
+    // Reversed Z only pays off with a float depth buffer, so the scene target gets one.
+    const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType) });
+    this.composer = new EffectComposer(this.renderer, sceneTarget);
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
+    this.bloom = new BloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.92);
     this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    this.composer.addPass(new BloomOutputPass(this.bloom));
+
+    if (this.perf) {
+      // The composer renders several passes per frame; count all of them, not just the last.
+      this.renderer.info.autoReset = false;
+      this.gpuTimer = createGpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
+      this.perf.gpuSupported = this.gpuTimer.supported;
+      this.perfOverlay = createPerfOverlay();
+      this.ui.append(this.perfOverlay.el);
+    }
 
     this.screens = createScreens(
       {
@@ -165,6 +211,7 @@ export class Game {
 
     this.sky = createSky(this.renderer, this.seed);
     this.scene.background = this.sky.background;
+    this.scene.fog = this.fog;
     // Shared with the infinite flight's scene: never disposed with a chunk.
     this.sky.background.userData['shared'] = true;
     this.scene.add(this.sky.stars);
@@ -433,23 +480,37 @@ export class Game {
     const k = this.keys;
     const radius = steerRadius(window.innerWidth, window.innerHeight);
     const aim = aimOf(this.cursor, radius, this.settings.invertY);
-    return {
-      aimX: aim.x,
-      aimY: aim.y,
-      thrust: k.has('KeyW') || k.has('ArrowUp'),
-      brake: k.has('KeyS') || k.has('ArrowDown'),
-      boost: k.has('Space'),
-      strafe: (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0),
-      roll: (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0),
-    };
+    const input = this.input;
+    input.aimX = aim.x;
+    input.aimY = aim.y;
+    input.thrust = k.has('KeyW') || k.has('ArrowUp');
+    input.brake = k.has('KeyS') || k.has('ArrowDown');
+    input.boost = k.has('Space');
+    input.strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    input.roll = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
+    return input;
   }
 
   // --- frame -----------------------------------------------------------------------------
 
   private frame(): void {
+    const startedAt = performance.now();
+    if (this.perf) {
+      this.perf.frame.push(startedAt - this.lastFrameAt);
+      this.lastFrameAt = startedAt;
+      this.renderer.info.reset();
+      this.gpuTimer?.begin();
+    }
     this.clock.update();
-    const dt = Math.min(0.05, this.clock.getDelta());
+    let dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
+    if (this.stillTime !== null) {
+      // Pinned clock: every animation shows the same instant, nothing moves.
+      dt = 0;
+      this.time = this.stillTime;
+      this.shake = 0;
+      this.nebulae.calm();
+    }
     if (this.state === 'infinite' && this.infinite) {
       const info = this.infinite.update(dt);
       this.sky.update(this.camera, this.renderer.getPixelRatio());
@@ -457,6 +518,7 @@ export class Game {
       this.audio?.setMood(0, info.nebula);
       this.adaptExposureTo(info.star?.position ?? null, info.star?.radius ?? 0, dt);
       this.composer.render(dt);
+      if (this.perf) this.endPerfFrame(startedAt, dt);
       return;
     }
     const simulate = this.state === 'playing' || this.state === 'dead' || this.state === 'victory';
@@ -472,13 +534,35 @@ export class Game {
       this.map.draw({ x: this.flight.position.x, z: this.flight.position.z, headingX: fwd.x, headingZ: fwd.z }, this.progress.found, this.time);
     }
     this.composer.render(dt);
+    if (this.captureNext) {
+      // Read the canvas in the same task as the render, before the browser clears it.
+      this.captureNext(this.renderer.domElement.toDataURL('image/png'));
+      this.captureNext = null;
+    }
+    if (this.perf) this.endPerfFrame(startedAt, dt);
+  }
+
+  private endPerfFrame(startedAt: number, dt: number): void {
+    const perf = this.perf!;
+    this.gpuTimer?.end();
+    perf.cpu.push(performance.now() - startedAt);
+    if (this.gpuTimer) for (const ms of this.gpuTimer.poll(this.gpuSamples)) perf.gpu.push(ms);
+    const info = this.renderer.info;
+    perf.counts = {
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      programs: info.programs?.length ?? 0,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      pixelRatio: this.renderer.getPixelRatio(),
+    };
+    this.perfOverlay?.update(() => perf.report(), dt > 0 ? dt : 1 / 60);
   }
 
   private simulate(dt: number): void {
     const f = this.flight;
     const world = this.world;
-    const input: FlightInput =
-      this.state === 'playing' ? this.readInput() : { aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 };
+    const input = this.state === 'playing' ? this.readInput() : IDLE_INPUT;
 
     if (this.state === 'dead') {
       this.deadTimer -= dt;
@@ -494,7 +578,7 @@ export class Game {
     const speed = f.velocity.length();
     const steps = Math.min(12, Math.max(1, Math.ceil((Math.max(speed, 300) * dt) / 10)));
     const h = dt / steps;
-    const near: Target[] = [];
+    const near = this.near;
     let hardestHit = 0;
     for (let i = 0; i < steps; i++) {
       stepFlight(f, input, h);
@@ -558,19 +642,16 @@ export class Game {
     else if (heat.level > 0) warning = 'heatRising';
     else if (this.hull.hp < 25 && !this.hull.destroyed) warning = 'hullCritical';
     this.hud.setWarning(this.state === 'dead' ? 'none' : warning);
-    const nebColor = neb.nebula ? '#' + new THREE.Color(neb.nebula.colors[0]).getHexString() : '#000';
+    const nebColor = neb.nebula ? this.cssColorOf(neb.nebula.id, neb.nebula.colors[0]) : '#000';
     this.hud.setTint(nebColor, neb.density, heat.level * 0.6 + (heat.dps > 0 ? 0.3 : 0));
     this.audio?.setMood(heat.level, neb.density);
     this.audio?.updateShip(f.throttle, f.boost, heat.dps > 0 && this.state === 'playing');
 
     // Fog inside nebulae, tinted by the cloud.
     if (neb.nebula && neb.density > 0) {
-      const color = new THREE.Color(neb.nebula.colors[1]).multiplyScalar(0.12);
-      if (!(this.scene.fog instanceof THREE.FogExp2)) this.scene.fog = new THREE.FogExp2(color, 0);
-      const fog = this.scene.fog as THREE.FogExp2;
-      fog.color.copy(color);
-      fog.density = 0.00022 * neb.density;
-    } else this.scene.fog = null;
+      this.fog.color.set(neb.nebula.colors[1]).multiplyScalar(0.12);
+      this.fog.density = 0.00022 * neb.density;
+    } else this.fog.density = 0;
 
     // Location banner.
     this.regionTimer -= dt;
@@ -728,6 +809,15 @@ export class Game {
     }
   }
 
+  private cssColorOf(id: string, color: number): string {
+    let css = this.nebulaCss.get(id);
+    if (css === undefined) {
+      css = '#' + new THREE.Color(color).getHexString();
+      this.nebulaCss.set(id, css);
+    }
+    return css;
+  }
+
   private pickUp(id: string): void {
     if (!collect(this.progress, id)) return;
     const a = this.world.artifacts.find((x) => x.id === id)!;
@@ -752,7 +842,8 @@ export class Game {
   }
 
   private updateMarkers(range: number): void {
-    const markers: Marker[] = [];
+    const markers = this.markers;
+    markers.length = 0;
     if (this.state !== 'playing') {
       this.hud.setMarkers(markers);
       return;
@@ -767,7 +858,7 @@ export class Game {
       if (distance > range * 1.15) continue;
       const toA = tmpV3.copy(pos).sub(this.camera.position);
       const inFront = toA.dot(camFwd) > 0;
-      const ndc = pos.clone().project(this.camera);
+      const ndc = tmpV4.copy(pos).project(this.camera);
       let x = (ndc.x * 0.5 + 0.5) * w;
       let y = (-ndc.y * 0.5 + 0.5) * hgt;
       const onScreen = inFront && Math.abs(ndc.x) < 0.94 && Math.abs(ndc.y) < 0.9;
@@ -783,7 +874,13 @@ export class Game {
         x = Math.min(w - 110, Math.max(110, w / 2 + Math.cos(angle) * w * 0.42));
         y = Math.min(hgt - 140, Math.max(120, hgt / 2 + Math.sin(angle) * hgt * 0.4));
       }
-      markers.push({ x, y, distance, edge: !onScreen, angle });
+      const m = (this.markerPool[markers.length] ??= { x: 0, y: 0, distance: 0, edge: false, angle: 0 });
+      m.x = x;
+      m.y = y;
+      m.distance = distance;
+      m.edge = !onScreen;
+      m.angle = angle;
+      markers.push(m);
     }
     this.hud.setMarkers(markers);
   }
@@ -834,7 +931,7 @@ export class Game {
     this.fill.position.copy(this.camera.position);
     this.fill.target.position.copy(f.position);
     this.sun.update(t, this.camera);
-    for (const p of this.planets) p.update(dt, t);
+    for (const p of this.planets) p.update(t);
     this.nebulae.update(t, dt);
     this.wrecks.update(t);
     this.debris.update(t, dt);
@@ -845,7 +942,7 @@ export class Game {
     this.bank += (f.spin.y * 0.55 - this.bank) * approach(4, dt);
     const idle = this.state === 'menu' ? 0.35 : 0;
     this.ship.update(t, Math.max(f.throttle, idle), f.boost, this.bank);
-    const tint = this.scene.fog ? new THREE.Color(1.0, 0.85, 1.0) : WHITE;
+    const tint = this.fog.density > 0 ? NEBULA_DUST : WHITE;
     this.dust.update(this.camera, f.velocity, tint);
     if (simulate || this.state === 'menu') {
       const radius = steerRadius(window.innerWidth, window.innerHeight);
@@ -871,7 +968,8 @@ export class Game {
       const offAxis = Math.acos(THREE.MathUtils.clamp(fwd.dot(toSun.normalize()), -1, 1));
       target = targetExposure({ starRadius: radius, distance, offAxis, fov: this.camera.fov, aspect: this.camera.aspect });
     }
-    this.exposure = stepExposure(this.exposure, target, dt);
+    // A pinned clock snaps straight to the target so repeated captures match exactly.
+    this.exposure = this.stillTime !== null ? target : stepExposure(this.exposure, target, dt);
     this.renderer.toneMappingExposure = this.exposure;
     this.bloom.strength = 0.8 * this.exposure * this.exposure;
   }
@@ -892,9 +990,21 @@ export class Game {
   /** ?debug=1: a handle for poking the game from the console. */
   private exposeDebug(): void {
     const self = this;
+    const teleport = (x: number, y: number, z: number, lookAt?: [number, number, number]) => {
+      const look = lookAt ? new THREE.Vector3(...lookAt) : new THREE.Vector3(0, 0, 0);
+      self.flight = createFlightState(new THREE.Vector3(x, y, z), look);
+      self.camQuat.copy(self.flight.orientation);
+    };
+    const play = () => {
+      self.state = 'playing';
+      self.screens.show('none');
+      self.hud.show(true);
+    };
     (window as unknown as Record<string, unknown>)['__vr'] = {
       world: this.world,
       scene: this.scene,
+      renderer: this.renderer,
+      composer: this.composer,
       get state() {
         return self.state;
       },
@@ -905,14 +1015,10 @@ export class Game {
         return self.hull;
       },
       teleport(x: number, y: number, z: number, lookAt?: [number, number, number]) {
-        const look = lookAt ? new THREE.Vector3(...lookAt) : new THREE.Vector3(0, 0, 0);
-        self.flight = createFlightState(new THREE.Vector3(x, y, z), look);
-        self.camQuat.copy(self.flight.orientation);
+        teleport(x, y, z, lookAt);
       },
       play() {
-        self.state = 'playing';
-        self.screens.show('none');
-        self.hud.show(true);
+        play();
       },
       press(code: string, down = true) {
         if (down) self.keys.add(code);
@@ -933,6 +1039,55 @@ export class Game {
       map(open: boolean) {
         if (open !== (self.state === 'map')) self.toggleMap();
       },
+      /** Fly to a benchmark spot ('spawn' | 'nebula' | 'belt' | 'star'), stopped, in play. */
+      spot(name: BenchSpotName) {
+        if (!BENCH_SPOTS.includes(name)) throw new Error(`spot: one of ${BENCH_SPOTS.join(', ')}`);
+        const s = benchSpot(self.world, name);
+        teleport(...s.position, s.lookAt);
+        play();
+        self.keys.clear();
+        self.cursor = { x: 0, y: 0 };
+        return s;
+      },
+      /** With ?perf=1: the rolling frame report, and a way to start a fresh window. */
+      perf() {
+        return self.perf?.report() ?? null;
+      },
+      perfReset() {
+        self.perf?.reset();
+        self.lastFrameAt = NaN;
+      },
+      /**
+       * Render `frames` frames back to back, each waited for with a 1-pixel read: the true cost
+       * of a frame with the GPU at full clock, independent of vsync and of a throttled tab.
+       */
+      benchSync(frames = 120, warmup = 20) {
+        const gl = self.renderer.getContext();
+        const px = new Uint8Array(4);
+        const run = (n: number) => {
+          for (let i = 0; i < n; i++) {
+            self.frame();
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+          }
+        };
+        run(warmup);
+        self.perf?.reset();
+        self.lastFrameAt = NaN;
+        const t0 = performance.now();
+        run(frames);
+        const ms = (performance.now() - t0) / frames;
+        return { ms, report: self.perf?.report() ?? null };
+      },
+      /** Pin the clock at t seconds (null to let it run): the same picture on every run. */
+      still(t: number | null) {
+        self.stillTime = t === null || !Number.isFinite(t) ? null : t;
+      },
+      /** A PNG data URL of the next rendered frame. */
+      capture(): Promise<string> {
+        return new Promise((resolve) => {
+          self.captureNext = resolve;
+        });
+      },
     };
   }
 }
@@ -940,7 +1095,22 @@ export class Game {
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpV3 = new THREE.Vector3();
+const tmpV4 = new THREE.Vector3();
+const IDLE_INPUT: Readonly<FlightInput> = Object.freeze({ aimX: 0, aimY: 0, thrust: false, brake: false, boost: false, strafe: 0, roll: 0 });
 const WHITE = new THREE.Color(1, 1, 1);
+const NEBULA_DUST = new THREE.Color(1.0, 0.85, 1.0);
+
+/** Probed on a throwaway canvas: the game canvas must get its context from three, once. */
+function supportsReversedDepth(): boolean {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    const ok = !!gl?.getExtension('EXT_clip_control');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return ok;
+  } catch {
+    return false;
+  }
+}
 const ROCK_SPARK = new THREE.Color(2.4, 1.3, 0.6);
 const METAL_SPARK = new THREE.Color(2.2, 2.0, 1.6);
 const ROCK_DEBRIS = new THREE.Color(0.55, 0.5, 0.45);

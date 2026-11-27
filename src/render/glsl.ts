@@ -62,3 +62,13 @@ export const FRAG_HEAD = /* glsl */ `
 export const FRAG_TAIL = /* glsl */ `
 #include <logdepthbuf_fragment>
 `;
+
+/** String surgery on one of three's shaders; loud if an upgrade moved a line it relies on. */
+export function patchShader(source: string, edits: ReadonlyArray<readonly [string, string]>): string {
+  let out = source;
+  for (const [from, to] of edits) {
+    if (!out.includes(from)) throw new Error(`patchShader: "${from}" not found — did three change?`);
+    out = out.replace(from, to);
+  }
+  return out;
+}

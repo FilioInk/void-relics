@@ -59,7 +59,8 @@ that drifts out and flies to the ship. The relics in asteroid fields and by the 
 you break stays broken.
 
 `?seed=12345` in the URL gives a different galaxy; the **New galaxy** button does the same with a
-random number.
+random number. `?perf=1` shows frame rate, frame / CPU / GPU time and draw-call counts in the
+corner.
 
 ## Infinite flight
 

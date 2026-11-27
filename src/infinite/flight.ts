@@ -41,6 +41,9 @@ const BUILD_BUDGET_MS = 6;
 
 export class InfiniteFlight {
   readonly scene = new THREE.Scene();
+  // On the scene from the start, thinned to zero outside nebulae: adding it at the first nebula
+  // would make every material pick a new shader mid-flight (a hitch).
+  private readonly fog = new THREE.FogExp2(0x000000, 0);
   readonly overlay: HTMLElement;
   private readonly director: Director;
   private readonly camera: THREE.PerspectiveCamera;
@@ -101,6 +104,7 @@ export class InfiniteFlight {
     this.director = new Director(opts.seed);
 
     this.scene.background = opts.envMap;
+    this.scene.fog = this.fog;
     this.stars = opts.stars.clone();
     this.scene.add(this.stars);
     this.scene.add(new THREE.AmbientLight(0x8090b0, 0.14));
@@ -434,12 +438,9 @@ export class InfiniteFlight {
     // Fog inside nebulae.
     const neb = this.nebulaAt();
     if (neb.colors && neb.density > 0) {
-      const color = new THREE.Color(neb.colors[1]).multiplyScalar(0.12);
-      if (!(this.scene.fog instanceof THREE.FogExp2)) this.scene.fog = new THREE.FogExp2(color, 0);
-      const fog = this.scene.fog as THREE.FogExp2;
-      fog.color.copy(color);
-      fog.density = 0.00022 * neb.density;
-    } else if (this.scene.fog instanceof THREE.FogExp2) this.scene.fog.density = 0;
+      this.fog.color.set(neb.colors[1]).multiplyScalar(0.12);
+      this.fog.density = 0.00022 * neb.density;
+    } else this.fog.density = 0;
   }
 
   private nebulaAt(): { density: number; colors: [number, number] | null } {

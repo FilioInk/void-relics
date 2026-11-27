@@ -1,6 +1,6 @@
 import { t } from '../text.ts';
 import { ARTIFACT_COUNT } from '../world/generate.ts';
-import { h } from './dom.ts';
+import { createWriter, h, opacity, percent } from './dom.ts';
 
 export type Warning = 'none' | 'heatRising' | 'heatCritical' | 'hullCritical';
 export type Marker = { x: number; y: number; distance: number; edge: boolean; angle: number };
@@ -61,6 +61,10 @@ export function createHud() {
   const el = h('div', { class: 'hud passive', hidden: true }, nebulaTint, heatTint, vignette, markers, ring, line, reticle, aim, gunHeat, cursor, relics, region, topRight, warn, toasts, flight, hint, flash);
 
   const markerPool: HTMLElement[] = [];
+  // Everything below runs every frame; the writer skips assignments that change nothing.
+  const w = createWriter();
+  const throttleFill = throttleBar.firstElementChild as HTMLElement;
+  const hullFill = hullBar.firstElementChild as HTMLElement;
   let warning: Warning = 'none';
   let lastFound = -1;
   let flashLevel = 0;
@@ -133,12 +137,11 @@ export function createHud() {
       window.setTimeout(() => region.classList.remove('show'), 5000);
     },
     setFlight(speed: number, throttle: number, hull: number, boosting: boolean) {
-      speedVal.textContent = `${Math.round(speed)} ${t('unitSpeed')}`;
-      const tb = throttleBar.firstElementChild as HTMLElement;
-      tb.style.width = `${Math.abs(throttle) * 100}%`;
+      w.text(speedVal, `${Math.round(speed)} ${t('unitSpeed')}`);
+      w.style(throttleFill, 'width', percent(Math.abs(throttle)));
       throttleBar.classList.toggle('rev', throttle < -0.02);
-      hullVal.textContent = `${Math.ceil(hull * 100)}%`;
-      (hullBar.firstElementChild as HTMLElement).style.width = `${hull * 100}%`;
+      w.text(hullVal, `${Math.ceil(hull * 100)}%`);
+      w.style(hullFill, 'width', percent(hull));
       boostTag.classList.toggle('on', boosting);
     },
     toast(html: string, kind: 'found' | 'signal') {
@@ -150,14 +153,15 @@ export function createHud() {
     setCursor(x: number, y: number, radius: number, visible: boolean) {
       const cx = window.innerWidth / 2;
       const cy = window.innerHeight / 2;
-      cursor.style.transform = `translate(${cx + x}px, ${cy + y}px)`;
-      cursor.hidden = !visible;
-      ring.style.width = ring.style.height = `${radius * 2}px`;
-      ring.style.margin = `${-radius}px 0 0 ${-radius}px`;
+      w.style(cursor, 'transform', `translate(${cx + x}px, ${cy + y}px)`);
+      w.hidden(cursor, !visible);
+      w.style(ring, 'width', `${radius * 2}px`);
+      w.style(ring, 'height', `${radius * 2}px`);
+      w.style(ring, 'margin', `${-radius}px 0 0 ${-radius}px`);
       const len = Math.hypot(x, y);
-      line.style.width = `${len}px`;
-      line.style.transform = `rotate(${Math.atan2(y, x)}rad)`;
-      line.hidden = !visible || len < 8;
+      w.style(line, 'width', `${len}px`);
+      w.style(line, 'transform', `rotate(${Math.atan2(y, x)}rad)`);
+      w.hidden(line, !visible || len < 8);
     },
     setMarkers(list: Marker[]) {
       while (markerPool.length < list.length) {
@@ -168,31 +172,30 @@ export function createHud() {
       markerPool.forEach((m, i) => {
         const d = list[i];
         if (!d) {
-          m.hidden = true;
+          w.hidden(m, true);
           return;
         }
-        m.hidden = false;
+        w.hidden(m, false);
         m.classList.toggle('edge', d.edge);
-        m.style.transform = `translate(${d.x}px, ${d.y}px)`;
-        const arrow = m.children[1] as HTMLElement;
-        arrow.style.transform = `rotate(${d.angle + Math.PI / 2}rad)`;
-        (m.children[2] as HTMLElement).textContent = `${t('signal')} · ${formatDistance(d.distance)}`;
+        w.style(m, 'transform', `translate(${d.x}px, ${d.y}px)`);
+        w.style(m.children[1] as HTMLElement, 'transform', `rotate(${d.angle + Math.PI / 2}rad)`);
+        w.text(m.children[2] as HTMLElement, `${t('signal')} · ${formatDistance(d.distance)}`);
       });
     },
     /** nebula: css colour and 0..1; heat 0..1; damage pulses the screen red. */
     setTint(nebulaColor: string, nebula: number, heat: number) {
-      nebulaTint.style.background = `radial-gradient(ellipse at center, ${nebulaColor} 0%, transparent 140%)`;
-      nebulaTint.style.opacity = String(nebula * 0.35);
-      heatTint.style.background = `radial-gradient(ellipse at center, transparent 30%, rgba(255,110,30,0.9) 130%)`;
-      heatTint.style.opacity = String(Math.min(1, heat * 1.2));
+      w.style(nebulaTint, 'background', `radial-gradient(ellipse at center, ${nebulaColor} 0%, transparent 140%)`);
+      w.style(nebulaTint, 'opacity', opacity(nebula * 0.35));
+      w.style(heatTint, 'background', `radial-gradient(ellipse at center, transparent 30%, rgba(255,110,30,0.9) 130%)`);
+      w.style(heatTint, 'opacity', opacity(heat * 1.2));
     },
     flash(color: string, strength: number) {
-      flash.style.background = color;
+      w.style(flash, 'background', color);
       flashLevel = Math.max(flashLevel, strength);
     },
     tick(dt: number) {
       flashLevel = Math.max(0, flashLevel - dt * 2.5);
-      flash.style.opacity = String(flashLevel);
+      w.style(flash, 'opacity', opacity(flashLevel));
     },
     show(v: boolean) {
       el.hidden = !v;

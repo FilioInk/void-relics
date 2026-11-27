@@ -98,7 +98,7 @@ function build(thing: Thing, segment: Segment, chunk: Chunk, ctx: StreamContext,
           chunk.vectors.add(center);
         }
       });
-      chunk.updaters.push((dt, t) => view.update(dt, t));
+      chunk.updaters.push((_dt, t) => view.update(t));
       break;
     }
     case 'star': {
