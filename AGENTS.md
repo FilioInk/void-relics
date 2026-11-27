@@ -185,8 +185,9 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   then steers by the real cursor position. Esc while locked releases the lock and pauses.
 - **Audio starts only after a click** (browser autoplay rules): the `AudioEngine` is created in
   `launch()`.
-- **GitHub Pages needs a public repository** on the FilioInk free plan; `deploy.yml` skips
-  itself while the repository is private.
+- **GitHub Pages needs a public repository** on the FilioInk free plan. The repository is
+  public and the game is live at https://filioink.github.io/void-relics/; `deploy.yml` skips
+  itself if the repository is ever made private.
 - **The game is English-only, by the owner's decision** — UI, README, everything. Do not add
   translations or a language picker; new strings go into `src/text.ts` in English.
 - The only network request at runtime is the Exo 2 font from Google Fonts; the game falls back
