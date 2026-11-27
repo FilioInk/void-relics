@@ -1,6 +1,7 @@
 import { createRng, type Rng } from '../core/rng.ts';
 import { makeName } from '../world/names.ts';
 import { ATMOSPHERE, NEBULA_COLORS, PALETTES, RADIUS_RANGE, type Asteroid, type Planet, type PlanetKind, type Vec3 } from '../world/generate.ts';
+import { gameRadius, sampleStar, type Star } from '../world/stars.ts';
 
 /**
  * Infinite flight, as plain data: an endless gently curving path, and for every stretch of it a
@@ -20,7 +21,8 @@ export type Thing =
   | { type: 'rocks'; center: Vec3; radius: number; count: number; seed: number }
   | { type: 'nebula'; center: Vec3; radius: number; colors: [number, number]; puffs: number; seed: number }
   | { type: 'planet'; planet: Planet; sun: Vec3 }
-  | { type: 'star'; position: Vec3; radius: number; color: number; name: string }
+  /** A star of a real class (`star`), `radius` metres in radius in the game. */
+  | { type: 'star'; position: Vec3; radius: number; name: string; star: Star }
   | { type: 'wreck'; position: Vec3; size: number; pieces: number; seed: number }
   | { type: 'station'; position: Vec3; size: number; kind: 'spine' | 'ring'; pieces: number; seed: number }
   | { type: 'graveyard'; center: Vec3; radius: number; satellites: number; seed: number };
@@ -33,6 +35,8 @@ export type Segment = {
   things: Thing[];
   /** Where the light falls from in this stretch: the star nearest in the story. */
   light: Vec3;
+  /** That star, for the colour and strength of its light; null before the first one. */
+  lightStar: Star | null;
 };
 
 // --- vectors -------------------------------------------------------------------------------
@@ -145,6 +149,7 @@ export class Director {
   private readonly segments: Segment[] = [];
   private lastStar = -Infinity;
   private light: Vec3 = [60000, 30000, -90000];
+  private lightStar: Star | null = null;
 
   constructor(seed: number) {
     this.seed = seed;
@@ -215,12 +220,16 @@ export class Director {
         break;
       }
       case 'planet': {
-        // A planet close enough to fill the view as it slides past, lit by a distant sun.
-        this.light = add(path.at(s0), scale(norm([rng.range(-1, 1), rng.range(-0.3, 0.6), rng.range(-1, 0.2)]), 90000));
+        // A planet close enough to fill the view as it slides past, lit by a distant sun; a
+        // giant sun stands further off, so that it never closes in on the path.
+        const star = this.star(i);
+        const radius = gameRadius(star);
+        this.light = add(path.at(s0), scale(norm([rng.range(-1, 1), rng.range(-0.3, 0.6), rng.range(-1, 0.2)]), Math.max(90000, radius * 5 + 40000)));
+        this.lightStar = star;
         const planet = this.planet(rng, i, 0);
         planet.position = place(rng.range(0.45, 0.7), CORRIDOR + planet.radius * rng.range(1.6, 2.4) + 400, planet.radius * (planet.ring ? 2.4 : 1.1));
         things.push({ type: 'planet', planet, sun: this.light });
-        things.push({ type: 'star', position: this.light, radius: rng.range(2500, 3500), color: rng.pick([0xffd27a, 0xffe6a8, 0xffb860, 0xbfd8ff]), name });
+        things.push({ type: 'star', position: this.light, radius, name, star });
         if (rng.chance(0.35)) {
           const moon = this.planet(rng, i, 1, ['rocky', 'ice', 'desert', 'lava']);
           moon.radius *= 0.45;
@@ -230,15 +239,19 @@ export class Director {
         break;
       }
       case 'star': {
+        // Passed at three to five of its own radii: a white dwarf a few kilometres off, a red
+        // supergiant a wall of fire more than a hundred kilometres away.
         this.lastStar = i;
-        const radius = rng.range(2200, 3200);
-        const star = place(0.6, rng.range(8000, 12000), radius * 2.6, rng.range(-0.6, 0.6) + (rng.chance(0.5) ? 0 : Math.PI));
-        this.light = star;
-        things.push({ type: 'star', position: star, radius, color: rng.pick([0xffd27a, 0xffe6a8, 0xffb860]), name });
+        const star = this.star(i);
+        const radius = gameRadius(star);
+        const at = place(0.6, radius * rng.range(3.2, 4.6) + 1500, radius * 2.6, rng.range(-0.6, 0.6) + (rng.chance(0.5) ? 0 : Math.PI));
+        this.light = at;
+        this.lightStar = star;
+        things.push({ type: 'star', position: at, radius, name, star });
         if (rng.chance(0.6)) {
           const planet = this.planet(rng, i, 0);
           planet.position = place(rng.range(0.15, 0.35), CORRIDOR + planet.radius * 2 + 500, planet.radius * (planet.ring ? 2.4 : 1.1));
-          things.push({ type: 'planet', planet, sun: star });
+          things.push({ type: 'planet', planet, sun: at });
         }
         break;
       }
@@ -264,7 +277,12 @@ export class Director {
         }
         break;
     }
-    return { index: i, kind, name, things, light: this.light };
+    return { index: i, kind, name, things, light: this.light, lightStar: this.lightStar };
+  }
+
+  /** The star of segment i, from its own stream so that the class never moves the rest. */
+  private star(i: number): Star {
+    return sampleStar(createRng(this.seed).fork(`star-${i}`));
   }
 
   private planet(rng: Rng, i: number, k: number, kinds: PlanetKind[] = ['lava', 'desert', 'rocky', 'terran', 'gas', 'gas', 'ice']): Planet {
@@ -314,6 +332,24 @@ export function fieldRocks(thing: Extract<Thing, { type: 'rocks' }>, path: Path,
     out.push({ position: p, radius, variant, rotation, shade });
   }
   return out;
+}
+
+/** How far along the path a star takes to fade in after its segment loads, and out before it goes. */
+export const STAR_FADE = 3000;
+
+/**
+ * How much of segment i's star shows when the ship is at s: it fades in after the segment
+ * loads (three ahead) and out before it is freed (one behind), so a giant never pops.
+ */
+export function starPresence(i: number, s: number): number {
+  const load = (i - 3) * SEGMENT;
+  const free = (i + 2) * SEGMENT;
+  const smooth = (a: number, b: number, x: number) => {
+    const u = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return u * u * (3 - 2 * u);
+  };
+  if (!Number.isFinite(s)) return 1;
+  return smooth(load + 200, load + 200 + STAR_FADE, s) * (1 - smooth(free - STAR_FADE, free - 100, s));
 }
 
 /** Which segments should be in memory when the ship is at distance s: one behind, three ahead. */
