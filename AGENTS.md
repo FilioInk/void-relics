@@ -95,6 +95,14 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   target (the chunks then compile to nothing); elsewhere it falls back to
   `logarithmicDepthBuffer`, and a `ShaderMaterial` without `VERT_HEAD/VERT_TAIL/FRAG_HEAD/
   FRAG_TAIL` from `src/render/glsl.ts` depth-sorts wrongly against everything else there.
+- **Nothing may sit exactly on a clip plane.** Under reversed depth `z = w` is the *near*
+  plane, and three's sky-box shader puts the box right there (`gl_Position.z = gl_Position.w`,
+  meant as "at the far plane"). A Mali-G615 in Chrome for Android clipped it into black
+  stair-steps and triangles that moved with the view. `createSky()` patches the shader
+  (`backgroundVertexFix()` in `src/render/glsl.ts`); a new shader that forces its own depth
+  must land strictly inside the clip volume too. Desktop GPUs never show this, so a rendering
+  change is worth a look on a phone: `npx vite --host --port <port>` and the Mac's LAN address
+  in the phone's Chrome, on the same Wi-Fi.
 - **Bloom is split across two passes.** `BloomPass` (`src/render/post.ts`) only builds the
   glow; `BloomOutputPass` adds it during tone mapping. Something inserted between them sees the
   scene without bloom; a pass after the output would need the glow added differently.
