@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { AudioEngine } from '../audio/engine.ts';
+import { onSoundGesture } from '../audio/gesture.ts';
 import { InfiniteFlight } from '../infinite/flight.ts';
 import { createInstallOffer } from '../ui/install.ts';
 import { starFacts, t, type Key } from '../text.ts';
@@ -358,7 +359,10 @@ export class Game {
     this.cursor = { x: 0, y: 0 };
   }
 
-  /** Audio may only start from a click, so it is created on the first one that needs it. */
+  /**
+   * Audio may only start from a click or a key, so it is created on the first one: the title
+   * screen's music begins with it. Every later gesture only resumes a context the browser held.
+   */
   private ensureAudio(): void {
     if (!this.audio) {
       try {
@@ -507,6 +511,8 @@ export class Game {
   }
 
   private bindInput(): void {
+    // Bound once the system is built, so the music never starts while the loading frames run.
+    onSoundGesture(window, () => this.ensureAudio());
     document.addEventListener('pointerlockchange', () => {
       const was = this.locked;
       this.locked = document.pointerLockElement === this.renderer.domElement;

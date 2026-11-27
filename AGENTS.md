@@ -91,7 +91,8 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
   the scales and chord progressions; `rocket.ts` is the engine's pure maths (noise colours,
   crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
-  which also runs in an `OfflineAudioContext` to render a listening demo.
+  which also runs in an `OfflineAudioContext` to render a listening demo; `gesture.ts` lists the
+  input that may start sound.
 - `src/ui/` — HUD, system map, menus, touch controls (`touchControls.ts`: the stick and buttons;
   their maths, finger tracking and the thrust latch are pure, in `src/game/touch.ts`),
   `install.ts` (the menu's Install app: the browser's install event, the steps per browser,
@@ -184,8 +185,12 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   landscape check use `__vr.touch(true)`.
 - **Pointer lock is optional.** Inside iframes or some embedded browsers it is refused; the game
   then steers by the real cursor position. Esc while locked releases the lock and pauses.
-- **Audio starts only after a click** (browser autoplay rules): the `AudioEngine` is created in
-  `launch()`.
+- **Audio starts only after a gesture** (browser autoplay rules): `onSoundGesture()`
+  (`src/audio/gesture.ts`) calls `ensureAudio()` on every click, tap and key press from the
+  moment the title screen appears, so the first one creates the `AudioEngine` and starts the
+  music in the menu; later ones only resume a context the browser held. Which events count
+  differs (iOS Safari only takes the end of a tap), hence the list. It is bound in
+  `bindInput()`, after the world is built, so the music never competes with the loading frames.
 - **GitHub Pages needs a public repository** on the FilioInk free plan. The repository is
   public and the game is live at https://filioink.github.io/void-relics/; `deploy.yml` skips
   itself if the repository is ever made private.
