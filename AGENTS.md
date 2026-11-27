@@ -29,6 +29,10 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 ## Layout
 
 - `src/core/` — seeded RNG and CPU noise.
+- `src/infinite/` — infinite flight: `director.ts` (the endless path and what each 6 km segment
+  holds, pure and tested), `stream.ts` (builds a segment with the regular `src/render/`
+  builders, a few things per frame, and frees it behind the ship), `flight.ts` (autopilot,
+  cameras, origin shifts, autopilot guns, captions).
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
   wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
   `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
@@ -51,6 +55,15 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 
 ## Things that will bite you
 
+- **Infinite flight never feeds the GPU big numbers.** It simulates in absolute coordinates
+  but draws relative to an origin that jumps to the ship every 40 km; every object is built
+  around its own centre and moved, and world-space uniforms (`uSun`, `uCenter`) move with it.
+  A new shader that reads world positions must go through `modelMatrix`/`modelViewMatrix`
+  (the nebula once used `viewMatrix` directly and could not be moved), and a builder that
+  bakes world positions into uniforms has to register them in the chunk's `vectors`.
+- **One light per star would recompile everything.** Three.js rebuilds every material's
+  shader when the number of lights changes, so infinite flight drops each star's PointLight
+  and moves a single DirectionalLight instead.
 - **Every custom shader needs the log-depth chunks.** The renderer uses
   `logarithmicDepthBuffer` (the scene spans 0.5 m to 400 km). A `ShaderMaterial` without
   `VERT_HEAD/VERT_TAIL/FRAG_HEAD/FRAG_TAIL` from `src/render/glsl.ts` depth-sorts wrongly

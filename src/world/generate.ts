@@ -120,7 +120,7 @@ const PLANET_PLAN: ReadonlyArray<{ orbit: number; kinds: PlanetKind[] }> = [
   { orbit: 53000, kinds: ['ice', 'rocky'] },
 ];
 
-const PALETTES: Record<PlanetKind, Array<[number, number, number]>> = {
+export const PALETTES: Record<PlanetKind, Array<[number, number, number]>> = {
   lava: [[0x1a0d0a, 0x3a1a10, 0xff5a1a], [0x140c0c, 0x402018, 0xffa020]],
   desert: [[0x8a5a32, 0xc8955a, 0xe9cf9a], [0x7a3e22, 0xb8683c, 0xe6b57e]],
   rocky: [[0x3c3a38, 0x6e6660, 0xa8a098], [0x4a3c34, 0x7c6a5a, 0xb0a08c]],
@@ -129,7 +129,7 @@ const PALETTES: Record<PlanetKind, Array<[number, number, number]>> = {
   ice: [[0x6a8aa8, 0xb8d4e8, 0xf4fbff], [0x5a7a9a, 0xa0c8d8, 0xeaf6fa]],
 };
 
-const ATMOSPHERE: Record<PlanetKind, number> = {
+export const ATMOSPHERE: Record<PlanetKind, number> = {
   lava: 0xff6a2a,
   desert: 0xffc890,
   rocky: 0x9aa4b0,
@@ -138,7 +138,7 @@ const ATMOSPHERE: Record<PlanetKind, number> = {
   ice: 0xa8e0ff,
 };
 
-const RADIUS_RANGE: Record<PlanetKind, [number, number]> = {
+export const RADIUS_RANGE: Record<PlanetKind, [number, number]> = {
   lava: [500, 800],
   desert: [700, 1000],
   rocky: [600, 950],
@@ -147,7 +147,7 @@ const RADIUS_RANGE: Record<PlanetKind, [number, number]> = {
   ice: [900, 1400],
 };
 
-const NEBULA_COLORS: Array<[number, number]> = [
+export const NEBULA_COLORS: Array<[number, number]> = [
   [0xd03cff, 0x5a2cff],
   [0x18d0c8, 0x2a6cff],
   [0xff7a2a, 0xd0204a],

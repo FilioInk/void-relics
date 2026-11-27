@@ -6,6 +6,8 @@ export const STRINGS = {
   launch: 'Launch',
   continue: 'Continue — {found}/20',
   newGalaxy: 'New galaxy',
+  infinite: 'Infinite flight',
+  infiniteHint: 'Infinite flight · C — change camera · H — hide hints · Esc — back to the menu',
   galaxy: 'Galaxy #{seed}',
   loading: 'Generating the system…',
   controlsTitle: 'Controls',
