@@ -22,6 +22,7 @@ import { createMap, type MapView } from '../ui/map.ts';
 import { createPerfOverlay, type PerfOverlay } from '../ui/perf.ts';
 import { PerfStats } from '../ui/perfStats.ts';
 import { createScreens } from '../ui/screens.ts';
+import { createTouchControls, type TouchControls } from '../ui/touchControls.ts';
 import { generateAsteroids, generateJunk, generateWorld, type Asteroid, type World } from '../world/generate.ts';
 import { nebulaDensityAt, regionAt, scanRange, type Region } from '../world/regions.ts';
 import { aimOf, moveCursor, steerRadius, type Cursor } from './aim.ts';
@@ -33,6 +34,7 @@ import { PICKUP_RADIUS, collect, formatTime, isComplete, markBroken, parseProgre
 import { SETTINGS_KEY, writeStore, readStore, type Settings } from './settings.ts';
 import { SpatialHash } from './spatialHash.ts';
 import { SEALED_CONTEXTS, SHELL_RADIUS, lootOf, segmentSphere, stepBolts, targetHp, targetId, type Bolt, type BoltHit, type Target } from './targets.ts';
+import { cursorOf, isTouchFirst } from './touch.ts';
 import { WEAPON, createWeapon, stepWeapon } from './weapons.ts';
 
 type State = 'loading' | 'menu' | 'playing' | 'paused' | 'map' | 'dead' | 'victory' | 'infinite';
@@ -83,6 +85,9 @@ export class Game {
   private dust!: DustView;
   private hud!: Hud;
   private map!: MapView;
+  /** On-screen stick and buttons; on screen only on a touch-first device (`touchMode`). */
+  private touch!: TouchControls;
+  private touchMode = false;
   private readonly screens: ReturnType<typeof createScreens>;
 
   private flight!: FlightState;
@@ -180,6 +185,14 @@ export class Game {
       this.ui.append(this.perfOverlay.el);
     }
 
+    // Touch-first devices get on-screen controls. A tablet that gains a trackpad switches back.
+    const touchQuery = window.matchMedia('(pointer: coarse)');
+    this.setTouchMode(isTouchFirst((q) => window.matchMedia(q).matches));
+    touchQuery.addEventListener('change', () => {
+      this.setTouchMode(isTouchFirst((q) => window.matchMedia(q).matches));
+      this.screens.refresh();
+    });
+
     this.screens = createScreens(
       {
         onLaunch: () => this.launch(),
@@ -194,7 +207,7 @@ export class Game {
         found: this.progress?.found.length ?? 0,
         settings: this.settings,
         victoryTime: formatTime(this.progress?.finishedAt ?? this.progress?.elapsed ?? 0),
-        touchOnly: window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches,
+        touch: this.touchMode,
       }),
     );
     this.ui.append(this.screens.el);
@@ -280,6 +293,8 @@ export class Game {
     this.hud = createHud();
     this.map = createMap(world, rocks);
     this.ui.prepend(this.hud.el, this.map.el);
+    this.touch = createTouchControls({ onMap: () => this.toggleMap(), onPause: () => this.pause() });
+    this.ui.append(this.touch.el);
     this.hud.setRelics(this.progress.found.length);
     this.hud.setSalvage(this.progress.salvage);
     this.hud.setSeedLine(t('galaxy', { seed: this.seed }));
@@ -331,7 +346,7 @@ export class Game {
     this.screens.show('none');
     this.hud.show(true);
     this.regionId = '';
-    this.requestLock();
+    if (!this.touchMode) this.requestLock();
   }
 
   /** Infinite flight: its own scene, drawn instead of the system until Esc. */
@@ -342,7 +357,7 @@ export class Game {
     this.hud.show(false);
     this.map.el.hidden = true;
     if (document.pointerLockElement) document.exitPointerLock();
-    this.infinite = new InfiniteFlight({ renderer: this.renderer, camera: this.camera, envMap: this.sky.background, stars: this.sky.stars, seed: this.seed, sounds: () => this.audio });
+    this.infinite = new InfiniteFlight({ renderer: this.renderer, camera: this.camera, envMap: this.sky.background, stars: this.sky.stars, seed: this.seed, sounds: () => this.audio, onBack: () => this.exitInfinite() });
     this.ui.append(this.infinite.overlay);
     // The ?perf=1 readout stays out of the picture here; __vr.perf() still reads it.
     if (this.perfOverlay) this.perfOverlay.el.hidden = true;
@@ -371,7 +386,7 @@ export class Game {
     this.screens.show('none');
     this.hud.show(true);
     void this.audio?.resume();
-    this.requestLock();
+    if (!this.touchMode) this.requestLock();
   }
 
   private pause(): void {
@@ -404,6 +419,11 @@ export class Game {
 
   // --- input -----------------------------------------------------------------------------
 
+  private setTouchMode(on: boolean): void {
+    this.touchMode = on;
+    document.body.classList.toggle('touch', on);
+  }
+
   private requestLock(): void {
     const canvas = this.renderer.domElement;
     try {
@@ -420,7 +440,10 @@ export class Game {
       this.locked = document.pointerLockElement === this.renderer.domElement;
       if (was && !this.locked && (this.state === 'playing' || this.state === 'map')) this.pause();
     });
+    // On a touch-first device the stick steers and FIRE fires: the mouse events a browser makes
+    // up from taps would otherwise yank the nose to the tapped spot and fire a shot.
     window.addEventListener('mousemove', (e) => {
+      if (this.touchMode) return;
       const radius = steerRadius(window.innerWidth, window.innerHeight);
       if (this.locked) this.cursor = moveCursor(this.cursor, e.movementX, e.movementY, radius, this.settings.sensitivity);
       else if (this.state === 'playing') {
@@ -431,7 +454,7 @@ export class Game {
       }
     });
     this.renderer.domElement.addEventListener('click', () => {
-      if (this.state === 'playing' && !this.locked) this.requestLock();
+      if (this.state === 'playing' && !this.locked && !this.touchMode) this.requestLock();
     });
     window.addEventListener('keydown', (e) => {
       if (e.repeat && (e.code === 'KeyM' || e.code === 'Escape')) return;
@@ -453,7 +476,7 @@ export class Game {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('mousedown', (e) => {
-      if (e.button === 0) this.firing = true;
+      if (e.button === 0 && !this.touchMode) this.firing = true;
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.firing = false;
@@ -461,10 +484,12 @@ export class Game {
     window.addEventListener('blur', () => {
       this.keys.clear();
       this.firing = false;
+      this.touch.reset();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         this.keys.clear();
+        this.touch.reset();
         if (this.state === 'playing') this.pause();
       }
     });
@@ -482,14 +507,17 @@ export class Game {
 
   private readInput(): FlightInput {
     const k = this.keys;
+    const touch = this.touch;
     const radius = steerRadius(window.innerWidth, window.innerHeight);
+    // The stick puts the cursor where the mouse would have, so the HUD shows the same circle.
+    if (this.touchMode) cursorOf(touch.aim(this.settings.sensitivity), radius, this.cursor);
     const aim = aimOf(this.cursor, radius, this.settings.invertY);
     const input = this.input;
     input.aimX = aim.x;
     input.aimY = aim.y;
-    input.thrust = k.has('KeyW') || k.has('ArrowUp');
-    input.brake = k.has('KeyS') || k.has('ArrowDown');
-    input.boost = k.has('Space');
+    input.thrust = k.has('KeyW') || k.has('ArrowUp') || touch.thrust;
+    input.brake = k.has('KeyS') || k.has('ArrowDown') || touch.brake;
+    input.boost = k.has('Space') || touch.boost;
     input.strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     input.roll = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
     return input;
@@ -515,6 +543,7 @@ export class Game {
       this.shake = 0;
       this.nebulae.calm();
     }
+    this.touch.setMode(!this.touchMode ? 'off' : this.state === 'playing' ? 'flight' : this.state === 'map' ? 'map' : 'off');
     if (this.state === 'infinite' && this.infinite) {
       const info = this.infinite.update(dt);
       this.sky.update(this.camera, this.renderer.getPixelRatio());
@@ -696,7 +725,7 @@ export class Game {
 
   private updateWeapons(dt: number): void {
     const f = this.flight;
-    const trigger = this.state === 'playing' && (this.firing || this.keys.has('KeyF'));
+    const trigger = this.state === 'playing' && (this.firing || this.keys.has('KeyF') || this.touch.fire);
     const fired = stepWeapon(this.weapon, trigger, dt);
     if (fired.length > 0) {
       // Both barrels toe in to meet at a point straight ahead of the nose.
@@ -1033,6 +1062,11 @@ export class Game {
       },
       fire(on: boolean) {
         self.firing = on;
+      },
+      /** Forces the touch controls on or off, e.g. to see them in a desktop window. */
+      touch(on: boolean) {
+        self.setTouchMode(on);
+        self.screens.refresh();
       },
       get rocks() {
         return self.rocks;

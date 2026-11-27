@@ -17,6 +17,10 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+/** A line icon on a 24-unit grid, drawn in the text colour. */
+export const icon = (path: string, size = 18): string =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+
 type StyleTarget = { style: { setProperty(name: string, value: string): void } };
 type TextTarget = { textContent: string | null };
 type HiddenTarget = { hidden: boolean | 'until-found' };

@@ -18,7 +18,8 @@ npm run preview      # serve dist/ locally
 ```
 
 URL parameters: `?seed=<integer>` picks the galaxy (default 1337), `?debug=1` exposes
-`window.__vr` (teleport, press keys, aim, fire, open the map) for poking the game from the console.
+`window.__vr` (teleport, press keys, aim, fire, open the map, `touch(true)` to force the touch
+controls on in a desktop window) for poking the game from the console.
 `?perf=1` shows a corner readout: FPS, frame / CPU / GPU ms (average and p95 over the last 240
 frames), draw calls, triangles and shader programs from `renderer.info`.
 
@@ -74,7 +75,9 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   the scales and chord progressions; `rocket.ts` is the engine's pure maths (noise colours,
   crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
   which also runs in an `OfflineAudioContext` to render a listening demo.
-- `src/ui/` — HUD, system map, menus. `src/text.ts` — every user-facing string.
+- `src/ui/` — HUD, system map, menus, touch controls (`touchControls.ts`: the stick and buttons;
+  their maths, finger tracking and the thrust latch are pure, in `src/game/touch.ts`).
+  `src/text.ts` — every user-facing string.
 - `.github/workflows/` — `ci.yml` runs verify on every PR; `deploy.yml` publishes to Pages.
 
 ## Things that will bite you
@@ -115,6 +118,11 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 - **Targets are identified by index.** A broken rock is saved as `rock:<index into
   generateAsteroids()>`, a satellite or junk piece by its index in the debris lists, a shell by
   its relic's index. Anything that reorders those lists breaks old saves' `broken` field.
+- **Touch controls are for touch-first devices only** (`(pointer: coarse)`, which sets
+  `body.touch`). There the stick owns the steering cursor and the game ignores mouse events,
+  because browsers make up mouse events from taps (a tap on THRUST would fire a shot and yank
+  the nose to the tapped spot). The browser pane emulates touch only under 768 px wide; for a
+  landscape check use `__vr.touch(true)`.
 - **Pointer lock is optional.** Inside iframes or some embedded browsers it is refused; the game
   then steers by the real cursor position. Esc while locked releases the lock and pauses.
 - **Audio starts only after a click** (browser autoplay rules): the `AudioEngine` is created in
