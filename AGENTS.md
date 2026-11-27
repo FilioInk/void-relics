@@ -35,7 +35,7 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   `names.ts` (generated names).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
   heat, collisions, hull), `progress.ts` (relics found, salvage, broken targets, saves),
-  `weapons.ts` (rate of fire, heat, gun mounts), `targets.ts` (what bolts hit, how many hits
+  `weapons.ts` (rate of fire, heat; the muzzles come from `ship.ts`), `targets.ts` (what bolts hit, how many hits
   things take, deterministic loot, sealed relics), `settings.ts`, `aim.ts`, `spatialHash.ts`;
   `game.ts` wires it all to the scene, HUD and audio and runs the loop.
 - `src/render/` — three.js builders: sky, sun, planets, asteroids, nebula smoke, wrecks,

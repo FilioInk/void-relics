@@ -20,12 +20,6 @@ export const WEAPON = {
   hitRadius: 2,
 } as const;
 
-/** Barrel positions in the ship's local frame (nose toward -Z), left then right. */
-export const GUN_MOUNTS: ReadonlyArray<readonly [number, number, number]> = [
-  [-4.8, -0.3, 0.6],
-  [4.8, -0.3, 0.6],
-];
-
 export type WeaponState = {
   /** 0..1; at 1 the guns lock. */
   heat: number;

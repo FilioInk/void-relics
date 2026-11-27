@@ -12,7 +12,7 @@ import { createDebris, type DebrisView } from '../render/debris.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { createNebulae, type NebulaView } from '../render/nebula.ts';
 import { createPlanet, type PlanetView } from '../render/planets.ts';
-import { SHIP_RADIUS, createShip, type ShipView } from '../render/ship.ts';
+import { GUN_MOUNTS, SHIP_RADIUS, createShip, type ShipView } from '../render/ship.ts';
 import { createSky, type Sky } from '../render/sky.ts';
 import { createSun, type SunView } from '../render/sun.ts';
 import { createWrecks, type WreckView } from '../render/wrecks.ts';
@@ -29,7 +29,7 @@ import { PICKUP_RADIUS, collect, formatTime, isComplete, markBroken, parseProgre
 import { SETTINGS_KEY, writeStore, readStore, type Settings } from './settings.ts';
 import { SpatialHash } from './spatialHash.ts';
 import { SEALED_CONTEXTS, SHELL_RADIUS, lootOf, segmentSphere, stepBolts, targetHp, targetId, type Bolt, type BoltHit, type Target } from './targets.ts';
-import { GUN_MOUNTS, WEAPON, createWeapon, stepWeapon } from './weapons.ts';
+import { WEAPON, createWeapon, stepWeapon } from './weapons.ts';
 
 type State = 'loading' | 'menu' | 'playing' | 'paused' | 'map' | 'dead' | 'victory';
 
