@@ -189,8 +189,9 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   music in the menu; later ones only resume a context the browser held. Which events count
   differs (iOS Safari only takes the end of a tap), hence the list. It is bound in
   `bindInput()`, after the world is built, so the music never competes with the loading frames.
-- **GitHub Pages needs a public repository** on the FilioInk free plan; `deploy.yml` skips
-  itself while the repository is private.
+- **GitHub Pages needs a public repository** on the FilioInk free plan. The repository is
+  public and the game is live at https://filioink.github.io/void-relics/; `deploy.yml` skips
+  itself if the repository is ever made private.
 - **The game is English-only, by the owner's decision** — UI, README, everything. Do not add
   translations or a language picker; new strings go into `src/text.ts` in English.
 - The only network request at runtime is the Exo 2 font from Google Fonts; the game falls back
