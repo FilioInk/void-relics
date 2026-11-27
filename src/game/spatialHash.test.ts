@@ -27,3 +27,15 @@ test('a rock larger than a cell is found from any cell it covers, once', () => {
   assert.equal(grid.query(0, 0, 0, 3000).length, 1);
   assert.equal(grid.query(5000, 0, 0, 10).length, 0);
 });
+
+test('a removed item is gone from every cell, and the rest stay', () => {
+  const a: Rock = { id: 1, position: [0, 0, 0], radius: 900 };
+  const b: Rock = { id: 2, position: [100, 0, 0], radius: 20 };
+  const grid = new SpatialHash(500, [a, b]);
+  grid.remove(a);
+  assert.deepEqual(grid.query(0, 0, 0, 3000).map((r) => r.id), [2]);
+  assert.equal(grid.query(800, 0, 0, 10).length, 0);
+  grid.remove(a);
+  grid.remove(b);
+  assert.equal(grid.query(0, 0, 0, 3000).length, 0);
+});

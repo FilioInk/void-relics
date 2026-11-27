@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ARTIFACT_COUNT } from '../world/generate.ts';
-import { collect, createProgress, formatTime, isComplete, parseProgress } from './progress.ts';
+import { collect, createProgress, formatTime, isComplete, markBroken, parseProgress } from './progress.ts';
 
 const ids = new Set(Array.from({ length: ARTIFACT_COUNT }, (_, i) => `relic-${i}`));
 
@@ -42,7 +42,27 @@ test('a save from another galaxy, junk, or foreign ids is not trusted', () => {
     found: ['relic-1'],
     elapsed: 0,
     finishedAt: null,
+    salvage: 0,
+    broken: [],
   });
+});
+
+test('a save from before the lasers loads with no salvage and nothing broken', () => {
+  const old = JSON.stringify({ seed: 42, found: ['relic-2'], elapsed: 50, finishedAt: null });
+  const p = parseProgress(old, 42, ids);
+  assert.deepEqual([p.found, p.salvage, p.broken], [['relic-2'], 0, []]);
+});
+
+test('salvage and broken targets survive a round trip; junk in them does not', () => {
+  const p = createProgress(42);
+  assert.equal(markBroken(p, 'rock:17'), true);
+  assert.equal(markBroken(p, 'rock:17'), false);
+  markBroken(p, 'shell:3');
+  p.salvage = 5;
+  assert.deepEqual(parseProgress(JSON.stringify(p), 42, ids), p);
+  const bad = parseProgress(JSON.stringify({ seed: 42, found: [], elapsed: 0, salvage: -2, broken: ['rock:1', 'rock:1', 'planet:2', 'rock:x', 7] }), 42, ids);
+  assert.deepEqual([bad.salvage, bad.broken], [0, ['rock:1']]);
+  assert.equal(parseProgress(JSON.stringify({ seed: 42, found: [], elapsed: 0, salvage: 2.5 }), 42, ids).salvage, 0);
 });
 
 test('time reads as m:ss, or h:mm:ss past an hour', () => {

@@ -18,7 +18,7 @@ npm run preview      # serve dist/ locally
 ```
 
 URL parameters: `?seed=<integer>` picks the galaxy (default 1337), `?debug=1` exposes
-`window.__vr` (teleport, press keys, aim, open the map) for poking the game from the console.
+`window.__vr` (teleport, press keys, aim, fire, open the map) for poking the game from the console.
 
 ## Verify
 
@@ -34,11 +34,14 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
   `names.ts` (generated names).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
-  heat, collisions, hull), `progress.ts` (relics found, saves), `settings.ts`, `aim.ts`,
-  `spatialHash.ts`; `game.ts` wires it all to the scene, HUD and audio and runs the loop.
+  heat, collisions, hull), `progress.ts` (relics found, salvage, broken targets, saves),
+  `weapons.ts` (rate of fire, heat; the muzzles come from `ship.ts`), `targets.ts` (what bolts hit, how many hits
+  things take, deterministic loot, sealed relics), `settings.ts`, `aim.ts`, `spatialHash.ts`;
+  `game.ts` wires it all to the scene, HUD and audio and runs the loop.
 - `src/render/` — three.js builders: sky, sun, planets, asteroids, nebula smoke, wrecks,
   orbital debris (`debris.ts`: stations, instanced satellites, junk, distance glints), relics,
-  the player ship (`ship.ts`, skinned by `plating.ts`), speed dust. Shared GLSL in `glsl.ts`.
+  the player ship (`ship.ts`, skinned by `plating.ts`), speed dust, laser effects (`combat.ts`:
+  bolts, sparks, fragments, salvage, relic shells — all pooled). Shared GLSL in `glsl.ts`.
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
   the scales and chord progressions; `rocket.ts` is the engine's pure maths (noise colours,
   crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
@@ -66,6 +69,9 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   `stepFlight()` and `stepExposure()` treat non-finite values as neutral: one NaN in the flight
   state or the exposure used to stick forever (frozen ship, black screen). Keep new per-frame
   state just as defensive.
+- **Targets are identified by index.** A broken rock is saved as `rock:<index into
+  generateAsteroids()>`, a satellite or junk piece by its index in the debris lists, a shell by
+  its relic's index. Anything that reorders those lists breaks old saves' `broken` field.
 - **Pointer lock is optional.** Inside iframes or some embedded browsers it is refused; the game
   then steers by the real cursor position. Esc while locked releases the lock and pauses.
 - **Audio starts only after a click** (browser autoplay rules): the `AudioEngine` is created in

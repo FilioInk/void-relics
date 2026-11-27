@@ -464,4 +464,99 @@ export class AudioEngine {
     const t = this.ctx.currentTime;
     this.bell(t, 1320, 0.03, this.sfxBus, null);
   }
+
+  // --- weapons ---------------------------------------------------------------------------
+
+  /** A blaster shot: a falling, slightly metallic chirp with a click on the front. pan -1..1. */
+  laser(pan: number): void {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const jitter = 1 + (Math.random() - 0.5) * 0.08;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(2300 * jitter, t);
+    o.frequency.exponentialRampToValueAtTime(190 * jitter, t + 0.17);
+    // A modulator a little off the carrier gives the zing of a struck wire.
+    const mod = ctx.createOscillator();
+    mod.frequency.setValueAtTime(3100 * jitter, t);
+    mod.frequency.exponentialRampToValueAtTime(260 * jitter, t + 0.17);
+    const depth = ctx.createGain();
+    depth.gain.setValueAtTime(1400, t);
+    depth.gain.exponentialRampToValueAtTime(40, t + 0.17);
+    mod.connect(depth).connect(o.frequency);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.07, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    const p = ctx.createStereoPanner();
+    p.pan.value = Math.max(-1, Math.min(1, pan));
+    o.connect(g).connect(p).connect(this.sfxBus);
+    o.start(t);
+    mod.start(t);
+    o.stop(t + 0.22);
+    mod.stop(t + 0.22);
+    this.noiseBurst(t, 0.025, 4500, 2, 0.05, p);
+  }
+
+  /** A bolt striking rock or metal. */
+  hit(strength: number): void {
+    const t = this.ctx.currentTime;
+    const s = Math.max(0.2, Math.min(1, strength));
+    this.noiseBurst(t, 0.09, 2600, 1.2, 0.09 * s, this.sfxBus);
+    this.noiseBurst(t, 0.05, 700, 1, 0.06 * s, this.sfxBus);
+  }
+
+  /** Something breaking apart: a crunch, a few cracks, a low thud. size 0..1. */
+  shatter(size: number): void {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const s = Math.max(0.15, Math.min(1, size));
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(2600, t);
+    lp.frequency.exponentialRampToValueAtTime(140, t + 0.5 + s * 0.6);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.32 * s + 0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7 + s * 0.8);
+    src.connect(lp).connect(g).connect(this.sfxBus);
+    g.connect(this.sfxEcho);
+    src.start(t, Math.random() * 1.5);
+    src.stop(t + 1.6);
+    for (let i = 0; i < 3 + Math.round(s * 4); i++) this.noiseBurst(t + Math.random() * 0.35, 0.03, 1800 + Math.random() * 2500, 2, 0.08 * s, this.sfxBus);
+    const thud = ctx.createOscillator();
+    thud.frequency.setValueAtTime(80, t);
+    thud.frequency.exponentialRampToValueAtTime(30, t + 0.5);
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0.35 * s, t);
+    tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    thud.connect(tg).connect(this.sfxBus);
+    thud.start(t);
+    thud.stop(t + 0.6);
+  }
+
+  /** Salvage picked up: two quick rising notes. */
+  salvage(): void {
+    const t = this.ctx.currentTime;
+    this.bell(t, midiToFreq(this.root + 43), 0.05, this.sfxBus, this.sfxEcho);
+    this.bell(t + 0.08, midiToFreq(this.root + 50), 0.05, this.sfxBus, this.sfxEcho);
+  }
+
+  /** A short band of noise: clicks, cracks and impact grit. */
+  private noiseBurst(at: number, length: number, freq: number, q: number, level: number, out: AudioNode): void {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = freq;
+    bp.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(level, at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + length);
+    src.connect(bp).connect(g).connect(out);
+    src.start(at, Math.random() * 1.8);
+    src.stop(at + length + 0.02);
+  }
 }

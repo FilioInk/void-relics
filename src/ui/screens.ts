@@ -44,7 +44,7 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
     h(
       'ul',
       { class: 'controls' },
-      ...(['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause'] as const).map((k) => h('li', { text: t(k) })),
+      ...(['ctlMouse', 'ctlThrust', 'ctlBrake', 'ctlBoost', 'ctlFire', 'ctlStrafe', 'ctlRoll', 'ctlMap', 'ctlPause'] as const).map((k) => h('li', { text: t(k) })),
     );
 
   const build = (name: ScreenName): HTMLElement | null => {
