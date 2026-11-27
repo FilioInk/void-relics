@@ -146,6 +146,28 @@ button { font: inherit; cursor: pointer; }
 .toggle.on { border-color: var(--accent); color: var(--accent); }
 .notice { margin-top: 18px; padding: 10px 12px; border: 1px solid var(--amber); color: var(--amber); font-size: 13px; border-radius: 3px; }
 
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.card-head h2 { margin: 0; }
+.galaxy-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.card .galaxy-row .seed { margin: 0; }
+.btn.small { padding: 7px 14px; font-size: 12px; }
+
+/* Start menu: the name across the whole screen in thin capitals, two ways to play, and the
+   settings one click further in. The scene keeps drifting behind it. */
+.overlay.menu { flex-direction: column; justify-content: space-between; padding: 11vh 3vw 9vh; background: linear-gradient(rgba(4, 6, 12, 0.6), rgba(4, 6, 12, 0.08) 38%, rgba(4, 6, 12, 0.08) 62%, rgba(4, 6, 12, 0.7)); }
+.menu-group { display: flex; flex-direction: column; align-items: center; gap: clamp(12px, 2.6vh, 24px); width: 100%; }
+.menu-title { width: 100%; margin: 0; line-height: 0; }
+.menu-title svg { display: block; width: 100%; height: auto; overflow: visible; }
+/* The typeface of the place names in infinite flight (.inf-caption), in its thinnest cut. */
+.menu-title text { font-family: var(--font); font-weight: 100; fill: var(--ink); filter: drop-shadow(0 0 18px rgba(0, 0, 0, 0.8)); }
+.menu-tagline { margin: 0; max-width: 640px; text-align: center; text-wrap: balance; color: rgba(223, 232, 244, 0.8); font-size: 15px; line-height: 1.55; letter-spacing: 0.04em; text-shadow: 0 0 6px rgba(0, 0, 0, 0.95), 0 0 18px rgba(0, 0, 0, 0.85); }
+.menu-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+.menu-buttons .btn { min-width: 240px; padding: 16px 30px; font-size: 15px; color: #fff; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: none; transition: background 0.2s, border-color 0.2s; }
+.menu-buttons .btn:hover, .menu-buttons .btn:focus-visible { filter: none; color: #fff; background: rgba(255, 255, 255, 0.08); border-color: #fff; outline: none; }
+.menu-link { padding: 8px 14px; color: var(--dim); background: none; border: 0; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; }
+.menu-link:hover, .menu-link:focus-visible { color: var(--accent); outline: none; }
+.overlay.menu .notice { margin: 0; max-width: 480px; text-align: center; }
+
 .big-center { text-align: center; }
 .big-center h2 { font-size: 34px; letter-spacing: 0.2em; }
 .dead h2 { color: var(--danger); }

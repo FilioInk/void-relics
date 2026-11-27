@@ -2,7 +2,7 @@ import { t } from '../text.ts';
 import type { Settings } from '../game/settings.ts';
 import { h } from './dom.ts';
 
-/** Menu, pause, death and victory overlays. They rebuild themselves when the language changes. */
+/** Menu, pause, death and victory overlays. They rebuild themselves when a setting changes. */
 
 export type ScreenName = 'loading' | 'menu' | 'pause' | 'dead' | 'victory' | 'none';
 
@@ -17,9 +17,49 @@ export type ScreenHandlers = {
 
 export type ScreenState = { seed: number; found: number; settings: Settings; victoryTime: string; touchOnly: boolean };
 
+/** The main game's button: the hunt, with the score once it has started. */
+export function playLabel(found: number): string {
+  return found > 0 ? t('collectRelicsProgress', { found }) : t('collectRelics');
+}
+
+/**
+ * The menu title's viewBox. At 150 units Exo 2 Thin sets the name well under 1000 units wide;
+ * letter spacing stretches it to the full 1000. Capitals stand 0.71 em tall, so a baseline at 110
+ * leaves them a few units below the top edge.
+ */
+const TITLE_W = 1000;
+const TITLE_H = 114;
+const TITLE_SIZE = 150;
+const TITLE_BASELINE = 110;
+
+const escapeXml = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/**
+ * The game's name across the whole width of the screen in thin capitals. SVG with `textLength`
+ * spreads the letters to fill the line exactly, whatever font has loaded, and scales with the
+ * window without any measuring.
+ */
+function menuTitle(): HTMLElement {
+  const el = h('h1', { class: 'menu-title', 'aria-label': t('title') });
+  el.innerHTML =
+    `<svg viewBox="0 0 ${TITLE_W} ${TITLE_H}" aria-hidden="true">` +
+    `<text x="${TITLE_W / 2}" y="${TITLE_BASELINE}" font-size="${TITLE_SIZE}" text-anchor="middle" textLength="${TITLE_W}" lengthAdjust="spacing">${escapeXml(t('title'))}</text>` +
+    `</svg>`;
+  return el;
+}
+
 export function createScreens(handlers: ScreenHandlers, state: () => ScreenState) {
   const root = h('div');
   let current: ScreenName = 'loading';
+  /** The start menu is two views: the title with its buttons, and the settings behind them. */
+  let menuView: 'main' | 'settings' = 'main';
+  const openMenuView = (view: 'main' | 'settings') => {
+    menuView = view;
+    render();
+  };
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Escape' && current === 'menu' && menuView === 'settings') openMenuView('main');
+  });
 
   const settingsPanel = (): HTMLElement => {
     const s = state().settings;
@@ -54,25 +94,45 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
       case 'loading':
         return h('div', { class: 'loading', text: t('loading') });
       case 'menu':
-        return h(
-          'div',
-          { class: 'overlay' },
-          h(
+        if (menuView === 'settings')
+          return h(
             'div',
-            { class: 'card' },
-            h('h1', { text: t('title') }),
-            h('div', { class: 'seed', text: t('galaxy', { seed: st.seed }) }),
-            h('p', { text: t('tagline') }),
+            { class: 'overlay', onclick: (e: Event) => { if (e.target === e.currentTarget) openMenuView('main'); } },
             h(
               'div',
-              { class: 'buttons' },
-              h('button', { class: 'btn', text: st.found > 0 ? t('continue', { found: st.found }) : t('launch'), onclick: () => handlers.onLaunch() }),
-              h('button', { class: 'btn ghost', text: t('infinite'), onclick: () => handlers.onInfinite() }),
-              h('button', { class: 'btn ghost', text: t('newGalaxy'), onclick: () => handlers.onNewGalaxy() }),
+              { class: 'card' },
+              h(
+                'div',
+                { class: 'card-head' },
+                h('h2', { text: t('settings') }),
+                h('button', { class: 'btn ghost small', text: t('back'), onclick: () => openMenuView('main') }),
+              ),
+              h(
+                'div',
+                { class: 'galaxy-row' },
+                h('div', { class: 'seed', text: t('galaxy', { seed: st.seed }) }),
+                h('button', { class: 'btn ghost small', text: t('newGalaxy'), onclick: () => handlers.onNewGalaxy() }),
+              ),
+              h('div', { class: 'section-title', text: t('controlsTitle') }),
+              controls(),
+              settingsPanel(),
             ),
-            h('div', { class: 'section-title', text: t('controlsTitle') }),
-            controls(),
-            settingsPanel(),
+          );
+        return h(
+          'div',
+          { class: 'overlay menu' },
+          // Name above, buttons below: the ship the menu camera circles stays in view between them.
+          h('div', { class: 'menu-group' }, menuTitle(), h('p', { class: 'menu-tagline', text: t('tagline') })),
+          h(
+            'div',
+            { class: 'menu-group' },
+            h(
+              'div',
+              { class: 'menu-buttons' },
+              h('button', { class: 'btn', text: playLabel(st.found), onclick: () => handlers.onLaunch() }),
+              h('button', { class: 'btn ghost', text: t('infinite'), onclick: () => handlers.onInfinite() }),
+            ),
+            h('button', { class: 'menu-link', text: t('settings'), onclick: () => openMenuView('settings') }),
             st.touchOnly ? h('div', { class: 'notice', text: t('needsMouse') }) : null,
           ),
         );
@@ -123,6 +183,7 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
     el: root,
     show(name: ScreenName) {
       current = name;
+      if (name === 'menu') menuView = 'main';
       render();
     },
     get current() {
