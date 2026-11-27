@@ -112,7 +112,9 @@ gigastructures as fit; `?giga=0` turns them off). The camera cuts between a chas
 cockpit — every one rides with the ship, none waits in space for it to fly past. The only things on screen are the name of each new place as it fades in and two small
 buttons in the bottom-right corner: a note that switches the music off and on (or **M**; it is
 the same setting as Music in the menu) and full screen (or **F**). The buttons and the cursor
-fade out while the mouse rests. **C** changes the camera, **H** hides the place names, **Esc**
+fade out while the mouse rests. **Drag** the picture with the mouse or a finger to swing the
+camera round the ship (in the cockpit, to turn your head); let go and it holds a moment, then
+eases back, and the autopilot does not cut while you look. **C** changes the camera, **H** hides the place names, **Esc**
 goes back to the menu; on a touch screen, buttons do the camera and the way back. The journey
 is fixed by the galaxy seed.
 

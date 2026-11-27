@@ -25,3 +25,6 @@ export const CHOSEN_HOLD = 45;
 
 /** The first camera's hold, before the autopilot's first cut. */
 export const FIRST_HOLD = 22;
+
+/** Seconds at least between the view coming home from free look and the next cut. */
+export const AFTER_LOOK = 6;

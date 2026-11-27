@@ -64,8 +64,9 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   `stream.ts`
   (builds a segment with the regular `src/render/` builders, a few things per frame, and frees
   it behind the ship), `cameras.ts` (which camera shows and for how long — all
-  of them ride with the ship; pure and tested), `flight.ts` (autopilot,
-  placing the cameras, origin shifts, autopilot guns, place-name captions, the music and full-screen
+  of them ride with the ship; pure and tested), `freeLook.ts` (the drag-to-look angles, the hold and the ease back; pure
+  and tested), `flight.ts` (autopilot,
+  placing the cameras and turning them by the free look, origin shifts, autopilot guns, place-name captions, the music and full-screen
   buttons). `src/ui/fullscreen.ts` wraps the Fullscreen API with the Safari fallback;
   `src/ui/wakeLock.ts` keeps the screen on while the game is full screen or the installed app.
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,

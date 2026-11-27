@@ -11,7 +11,8 @@ import { h, icon } from '../ui/dom.ts';
 import { createFullscreenButton, toggleFullscreen, type FullscreenButton } from '../ui/fullscreen.ts';
 import { starLook, type Star } from '../world/stars.ts';
 import { Director, SEGMENT, cruiseSpeed, distance, isGiga, isMega, starPresence, wantedSegments, type Segment } from './director.ts';
-import { CAMERA_ORDER, CHOSEN_HOLD, FIRST_HOLD, autoHold, nextCameraIndex, type CameraMode } from './cameras.ts';
+import { AFTER_LOOK, CAMERA_ORDER, CHOSEN_HOLD, FIRST_HOLD, autoHold, nextCameraIndex, type CameraMode } from './cameras.ts';
+import { createLook, dragLook, grabLook, lookBusy, releaseLook, resetLook, stepLook } from './freeLook.ts';
 import { disposeChunk, planChunk, rebaseChunk, type Chunk } from './stream.ts';
 
 /**
@@ -71,6 +72,41 @@ export class InfiniteFlight {
   private modeIndex = 0;
   private modeTimer = FIRST_HOLD;
   private readonly camQuat = new THREE.Quaternion();
+  // Free look: a drag on the picture, with the mouse or one finger, swings the camera.
+  private readonly look = createLook();
+  private lookPointer: number | null = null;
+  private lookX = 0;
+  private lookY = 0;
+  private readonly onLookDown = (e: PointerEvent): void => {
+    if (this.lookPointer !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    this.lookPointer = e.pointerId;
+    this.lookX = e.clientX;
+    this.lookY = e.clientY;
+    grabLook(this.look);
+    document.body.classList.add('inf-looking');
+    try {
+      this.renderer.domElement.setPointerCapture(e.pointerId);
+    } catch {
+      // Without capture the drag still works while the pointer stays over the picture.
+    }
+  };
+  private readonly onLookMove = (e: PointerEvent): void => {
+    if (e.pointerId !== this.lookPointer) return;
+    // The button came up somewhere the page never heard about.
+    if (e.pointerType === 'mouse' && e.buttons === 0) return this.endLook();
+    dragLook(this.look, e.clientX - this.lookX, e.clientY - this.lookY, window.innerHeight);
+    this.lookX = e.clientX;
+    this.lookY = e.clientY;
+  };
+  private readonly onLookUp = (e: PointerEvent): void => {
+    if (e.pointerId === this.lookPointer) this.endLook();
+  };
+  private readonly endLook = (): void => {
+    if (this.lookPointer === null) return;
+    this.lookPointer = null;
+    releaseLook(this.look);
+    document.body.classList.remove('inf-looking');
+  };
   private orbitAngle = 0;
   private segmentShown = -1;
   private lastShot = -100;
@@ -185,6 +221,14 @@ export class InfiniteFlight {
     window.addEventListener('pointermove', this.wake);
     window.addEventListener('pointerdown', this.wake);
     this.wake();
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener('pointerdown', this.onLookDown);
+    canvas.addEventListener('pointermove', this.onLookMove);
+    canvas.addEventListener('pointerup', this.onLookUp);
+    canvas.addEventListener('pointercancel', this.onLookUp);
+    canvas.addEventListener('lostpointercapture', this.onLookUp);
+    window.addEventListener('blur', this.endLook);
+    document.body.classList.add('inf-on');
   }
 
   nextCamera(): void {
@@ -212,6 +256,14 @@ export class InfiniteFlight {
     window.removeEventListener('pointerdown', this.wake);
     window.clearTimeout(this.idleTimer);
     document.body.classList.remove('cursor-idle');
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener('pointerdown', this.onLookDown);
+    canvas.removeEventListener('pointermove', this.onLookMove);
+    canvas.removeEventListener('pointerup', this.onLookUp);
+    canvas.removeEventListener('pointercancel', this.onLookUp);
+    canvas.removeEventListener('lostpointercapture', this.onLookUp);
+    window.removeEventListener('blur', this.endLook);
+    document.body.classList.remove('inf-on', 'inf-looking');
     this.fullscreen.dispose();
     this.overlay.remove();
   }
@@ -400,10 +452,14 @@ export class InfiniteFlight {
   private setMode(mode: CameraMode): void {
     this.mode = mode;
     if (mode === 'orbit') this.orbitAngle = Math.random() * Math.PI * 2;
+    resetLook(this.look);
     this.placeCamera(0, true);
   }
 
   private placeCamera(dt: number, snap: boolean): void {
+    stepLook(this.look, dt);
+    // No cut while the player looks around, nor right after the view comes home.
+    if (lookBusy(this.look)) this.modeTimer = Math.max(this.modeTimer, AFTER_LOOK);
     this.modeTimer -= dt;
     if (this.modeTimer <= 0) {
       // The timer first: setMode places the camera through here again.
@@ -447,10 +503,29 @@ export class InfiniteFlight {
         break;
       }
     }
+    this.applyLook(shipAt);
     if (Math.abs(cam.fov - fov) > 0.01) {
       cam.fov = snap ? fov : cam.fov + (fov - cam.fov) * approach(3, dt);
       cam.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * Turns the placed camera by the free-look angles, in its own frame: round the ship, which
+   * keeps its place on screen, or, from the cockpit, in place — there the world follows the
+   * finger instead of the ship, so the angles flip.
+   */
+  private applyLook(shipAt: THREE.Vector3): void {
+    const { yaw, pitch } = this.look;
+    if (yaw === 0 && pitch === 0) return;
+    const cam = this.camera;
+    const sign = this.mode === 'cockpit' ? -1 : 1;
+    const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(sign * pitch, sign * yaw, 0, 'YXZ'));
+    if (this.mode !== 'cockpit') {
+      const world = cam.quaternion.clone().multiply(turn).multiply(cam.quaternion.clone().invert());
+      cam.position.sub(shipAt).applyQuaternion(world).add(shipAt);
+    }
+    cam.quaternion.multiply(turn);
   }
 
   // --- visuals and info ------------------------------------------------------------------------
