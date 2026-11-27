@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ARTIFACT_COUNT, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateWorld } from './generate.ts';
+import { readFileSync } from 'node:fs';
+import { ARTIFACT_COUNT, JUNK_VARIANTS, MIN_ARTIFACT_SPACING, WORLD_RADIUS, dist, generateAsteroids, generateJunk, generateWorld, junkNormal, type Vec3 } from './generate.ts';
 
 const SEEDS = [1, 7, 1337, 2024, 99991, 123456789];
 
@@ -61,4 +62,86 @@ test('exactly one artifact is placed as a dare near the star, inside the heat zo
   const hot = w.artifacts.filter((a) => dist(a.position, w.sun.position) < w.sun.heatRadius);
   assert.equal(hot.length, 1);
   assert.equal(hot[0]!.context, 'sun');
+});
+
+// The layout of three galaxies as it was before stations, satellites and the junk ring existed
+// (positions, sizes, names, the asteroid count and a sample of rocks). Saves point at relics by
+// id, so none of this may move. Numbers are compared to a centimetre: Math.sin and friends
+// differ in the last bit between CPUs, so an exact hash passed on a Mac and failed on CI.
+const BEFORE_DEBRIS = JSON.parse(readFileSync(new URL('./fixtures/before-debris.json', import.meta.url), 'utf8')) as Record<
+  string,
+  { points: number[][]; sizes: number[]; names: string[]; contexts: string[]; rocks: number; rockSample: number[][] }
+>;
+
+const near = (a: number[], b: number[], what: string) => {
+  assert.equal(a.length, b.length, what);
+  a.forEach((v, i) => assert.ok(Math.abs(v - b[i]!) < 0.01, `${what}[${i}]: ${v} vs ${b[i]}`));
+};
+
+test('adding debris moved nothing that was already in the system', () => {
+  for (const [seed, before] of Object.entries(BEFORE_DEBRIS)) {
+    const w = generateWorld(Number(seed));
+    const rocks = generateAsteroids(w);
+    const points = [w.sun.position, ...w.planets.map((p) => p.position), ...w.clusters.map((c) => c.center), ...w.nebulae.map((n) => n.center), ...w.wrecks.map((x) => x.position), ...w.artifacts.map((a) => a.position), w.spawn.position];
+    near(points.flat(), before.points.flat(), `seed ${seed} positions`);
+    near([w.sun.radius, ...w.planets.map((p) => p.radius), ...w.clusters.map((c) => c.radius), ...w.nebulae.map((n) => n.radius), ...w.wrecks.map((x) => x.size)], before.sizes, `seed ${seed} sizes`);
+    assert.deepEqual([w.sun.name, w.belt.name, ...w.planets.map((p) => p.name), ...w.clusters.map((c) => c.name), ...w.nebulae.map((n) => n.name), ...w.wrecks.map((x) => x.name), ...w.artifacts.map((a) => a.name)], before.names);
+    assert.deepEqual(w.artifacts.map((a) => a.context), before.contexts);
+    assert.equal(rocks.length, before.rocks, `seed ${seed} rock count`);
+    near(rocks.filter((_, i) => i % 300 === 0).flatMap((r) => [...r.position, r.radius]), before.rockSample.flat(), `seed ${seed} rocks`);
+  }
+});
+
+const inRocks = (p: Vec3, margin: number, w: ReturnType<typeof generateWorld>): boolean => {
+  if (w.clusters.some((c) => dist(p, c.center) < c.radius + margin)) return true;
+  const r = Math.hypot(p[0], p[2]);
+  return r > w.belt.inner - margin && r < w.belt.outer + margin && Math.abs(p[1]) < w.belt.thickness * 2 + margin;
+};
+
+for (const seed of SEEDS) {
+  test(`seed ${seed}: stations and satellite graveyards stand clear of everything`, () => {
+    const w = generateWorld(seed);
+    assert.ok(w.stations.length >= 3 && w.stations.length <= 4, `${w.stations.length} stations`);
+    assert.ok(w.graveyards.length >= 8, `${w.graveyards.length} graveyards`);
+    const sites = [...w.stations.map((s) => ({ id: s.id, p: s.position, r: s.size })), ...w.graveyards.map((g) => ({ id: g.id, p: g.center, r: g.radius }))];
+    for (const s of sites) {
+      assert.ok(dist(s.p, w.sun.position) > w.sun.warnRadius + s.r, `${s.id} is in the star's heat`);
+      for (const p of w.planets) assert.ok(dist(s.p, p.position) > p.radius * (p.ring ? 2.4 : 1) + s.r, `${s.id} is inside ${p.id}`);
+      assert.ok(!inRocks(s.p, s.r, w), `${s.id} sits among rocks`);
+      for (const a of w.artifacts) assert.ok(dist(s.p, a.position) > s.r + 300, `${s.id} covers ${a.id}`);
+      for (const x of w.wrecks) assert.ok(dist(s.p, x.position) > s.r + x.size * 3, `${s.id} overlaps ${x.id}`);
+      assert.ok(dist(s.p, w.spawn.position) > s.r + 2000, `${s.id} is on the spawn`);
+    }
+    for (let i = 0; i < sites.length; i++)
+      for (let j = i + 1; j < sites.length; j++) assert.ok(dist(sites[i]!.p, sites[j]!.p) > sites[i]!.r + sites[j]!.r, `${sites[i]!.id} overlaps ${sites[j]!.id}`);
+  });
+
+  test(`seed ${seed}: a junk ring circles the Earth-like world`, () => {
+    const w = generateWorld(seed);
+    const ring = w.junk;
+    assert.ok(ring, 'there is a junk ring');
+    const home = w.planets.find((p) => p.id === ring.planetId)!;
+    assert.equal(home.kind, 'terran');
+    assert.ok(ring.inner > home.radius * 1.3 && ring.outer > ring.inner);
+    const n = junkNormal(ring);
+    assert.ok(Math.abs(Math.hypot(...n) - 1) < 1e-9);
+    const junk = generateJunk(w);
+    let inRing = 0;
+    for (const j of junk) {
+      assert.ok(j.variant >= 0 && j.variant < JUNK_VARIANTS && j.size > 0);
+      assert.ok(!inRocks(j.position, j.size, w), 'junk among rocks');
+      for (const a of w.artifacts) assert.ok(dist(j.position, a.position) > j.size + 100, `junk on ${a.id}`);
+      for (const p of w.planets) assert.ok(dist(j.position, p.position) > p.radius + j.size, `junk inside ${p.id}`);
+      const d = dist(j.position, ring.center);
+      if (d > ring.inner * 0.9 && d < ring.outer * 1.1) inRing++;
+    }
+    assert.ok(inRing > ring.count * 0.6, `most of the ring survives the clearances (${inRing}/${ring.count})`);
+  });
+}
+
+test('debris is the same for the same seed', () => {
+  const a = generateWorld(42);
+  const b = generateWorld(42);
+  assert.deepEqual([a.stations, a.graveyards, a.junk], [b.stations, b.graveyards, b.junk]);
+  assert.deepEqual(generateJunk(a), generateJunk(b));
 });

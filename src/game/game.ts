@@ -7,6 +7,7 @@ import { AudioEngine } from '../audio/engine.ts';
 import { t, type Key } from '../text.ts';
 import { createArtifacts, type ArtifactView } from '../render/artifacts.ts';
 import { createAsteroids } from '../render/asteroids.ts';
+import { createDebris, type DebrisView } from '../render/debris.ts';
 import { createDust, type DustView } from '../render/dust.ts';
 import { createNebulae, type NebulaView } from '../render/nebula.ts';
 import { createPlanet, type PlanetView } from '../render/planets.ts';
@@ -17,7 +18,7 @@ import { createWrecks, type Collider, type WreckView } from '../render/wrecks.ts
 import { createHud, type Hud, type Marker, type Warning } from '../ui/hud.ts';
 import { createMap, type MapView } from '../ui/map.ts';
 import { createScreens } from '../ui/screens.ts';
-import { generateAsteroids, generateWorld, type World } from '../world/generate.ts';
+import { generateAsteroids, generateJunk, generateWorld, type World } from '../world/generate.ts';
 import { nebulaDensityAt, regionAt, scanRange, type Region } from '../world/regions.ts';
 import { aimOf, moveCursor, steerRadius, type Cursor } from './aim.ts';
 import { stepExposure, targetExposure } from './exposure.ts';
@@ -32,6 +33,9 @@ type State = 'loading' | 'menu' | 'playing' | 'paused' | 'map' | 'dead' | 'victo
 const REGION_KEYS: Record<Region['kind'], Key> = {
   star: 'regionStar',
   wreck: 'regionWreck',
+  station: 'regionStation',
+  graveyard: 'regionGraveyard',
+  junk: 'regionJunk',
   nebula: 'regionNebula',
   field: 'regionField',
   belt: 'regionBelt',
@@ -58,6 +62,7 @@ export class Game {
   private planets: PlanetView[] = [];
   private nebulae!: NebulaView;
   private wrecks!: WreckView;
+  private debris!: DebrisView;
   private artifacts!: ArtifactView;
   private ship!: ShipView;
   private dust!: DustView;
@@ -158,6 +163,8 @@ export class Game {
     this.scene.add(createAsteroids(rocks, this.seed).group);
     this.wrecks = createWrecks(world.wrecks);
     this.scene.add(this.wrecks.group);
+    this.debris = createDebris(world.stations, world.graveyards, generateJunk(world), this.sky.background, this.seed);
+    this.scene.add(this.debris.group);
     await nextFrame();
 
     this.nebulae = createNebulae(world.nebulae, this.seed);
@@ -172,7 +179,7 @@ export class Game {
     this.scene.add(this.dust.lines);
 
     const colliders: Collider[] = rocks.map((r) => ({ position: r.position, radius: r.radius * 0.92 }));
-    colliders.push(...this.wrecks.colliders);
+    colliders.push(...this.wrecks.colliders, ...this.debris.colliders);
     this.grid = new SpatialHash(600, colliders);
 
     const ids = new Set(world.artifacts.map((a) => a.id));
@@ -594,6 +601,7 @@ export class Game {
     for (const p of this.planets) p.update(dt, t);
     this.nebulae.update(t, dt);
     this.wrecks.update(t);
+    this.debris.update(t, dt);
     this.artifacts.update(t, dt, window.innerHeight * this.renderer.getPixelRatio());
     this.ship.root.position.copy(f.position);
     this.ship.root.quaternion.copy(f.orientation);

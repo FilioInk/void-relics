@@ -30,14 +30,15 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
 
 - `src/core/` — seeded RNG and CPU noise.
 - `src/world/` — the system as plain data: `generate.ts` (planets, belt, clusters, nebulae,
-  wrecks, the 20 relics, spawn), `regions.ts` (where the ship is, nebula density, scan range),
+  wrecks, the 20 relics, spawn, then stations, satellite graveyards and the junk ring;
+  `generateJunk()` lists the loose junk pieces), `regions.ts` (where the ship is, nebula density, scan range),
   `names.ts` (generated names).
 - `src/game/` — rules without rendering: `flight.ts` (arcade flight model), `hazards.ts` (star
   heat, collisions, hull), `progress.ts` (relics found, saves), `settings.ts`, `aim.ts`,
   `spatialHash.ts`; `game.ts` wires it all to the scene, HUD and audio and runs the loop.
 - `src/render/` — three.js builders: sky, sun, planets, asteroids, nebula smoke, wrecks,
-  relics, the player ship (`ship.ts`, skinned by `plating.ts`), speed dust. Shared GLSL in
-  `glsl.ts`.
+  orbital debris (`debris.ts`: stations, instanced satellites, junk, distance glints), relics,
+  the player ship (`ship.ts`, skinned by `plating.ts`), speed dust. Shared GLSL in `glsl.ts`.
 - `src/audio/` — `engine.ts` synthesises music and effects with Web Audio; `theory.ts` holds
   the scales and chord progressions; `rocket.ts` is the engine's pure maths (noise colours,
   crackle, the throttle → mix curve, ignition events) and `rocketVoice.ts` its Web Audio graph,
@@ -56,7 +57,11 @@ npm run verify   # tsc --noEmit + node --test "src/**/*.test.ts" — green befor
   and constructor parameter properties.
 - **Changing `generate.ts` moves every galaxy.** Saves are keyed by seed and store relic ids;
   if the relic layout changes, bump the `v1` in `storageKey()` so old saves are not applied to
-  new positions.
+  new positions. To add content without moving anything, draw it from a new `root.fork(...)`
+  and place it after the relics, as the debris does; `generate.test.ts` compares the layout with
+  `src/world/fixtures/before-debris.json` and fails if it shifts. Compare floats with a
+  tolerance, never by exact hash: `Math.sin` and friends differ in the last bit between a Mac
+  and the Linux CI.
 - **A hidden or minimised window can report 0×0.** `onResize()` skips it, and `aimOf()`,
   `stepFlight()` and `stepExposure()` treat non-finite values as neutral: one NaN in the flight
   state or the exposure used to stick forever (frozen ship, black screen). Keep new per-frame

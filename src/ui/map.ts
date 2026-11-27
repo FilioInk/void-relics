@@ -1,6 +1,6 @@
 import { createRng } from '../core/rng.ts';
 import { t } from '../text.ts';
-import { WORLD_RADIUS, type Asteroid, type World } from '../world/generate.ts';
+import { WORLD_RADIUS, junkNormal, type Asteroid, type World } from '../world/generate.ts';
 import { h } from './dom.ts';
 
 /**
@@ -37,6 +37,9 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
     item('background:rgba(180,170,160,0.55);border-radius:50%;transform:scale(0.5)', t('legendField'));
     item('background:radial-gradient(#d03cff,transparent 70%)', t('legendNebula'));
     item('border:1px solid #9aa4b0;transform:rotate(45deg) scale(0.7)', t('legendWreck'));
+    item('border:1px solid #c8d4e0;transform:scale(0.75)', t('legendStation'));
+    item('background:radial-gradient(circle,#c8d4e0 0 1.5px,transparent 2px) 0 0/6px 6px;transform:scale(0.8)', t('legendGraveyard'));
+    item('border:2px dotted rgba(190,200,215,0.7);border-radius:50%;transform:scale(0.8)', t('legendJunk'));
     item('background:#5ff5e0;transform:rotate(45deg) scale(0.8);box-shadow:0 0 6px #5ff5e0', t('legendFound'));
     item('border:1px dashed #ffb547;border-radius:50%', t('legendSignal'));
     item('width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #fff', t('legendYou'));
@@ -126,6 +129,31 @@ export function createMap(world: World, rocks: Asteroid[]): MapView {
       ctx.arc(cx, cy, world.sun.heatRadius * s, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // The junk ring, seen from above: an ellipse squashed by its tilt.
+      if (world.junk) {
+        const ring = world.junk;
+        const n = junkNormal(ring);
+        const mid = ((ring.inner + ring.outer) / 2) * s;
+        ctx.strokeStyle = 'rgba(190,200,215,0.45)';
+        ctx.lineWidth = Math.max(1.5, (ring.outer - ring.inner) * s);
+        ctx.setLineDash([1.5, 3]);
+        ctx.beginPath();
+        ctx.ellipse(X(ring.center[0]), Y(ring.center[2]), mid, mid * Math.abs(n[1]), Math.atan2(n[2], n[0]), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1;
+      }
+
+      // Stations as squares, satellite graveyards as a scatter of dots.
+      ctx.strokeStyle = 'rgba(200,212,224,0.9)';
+      for (const st of world.stations) ctx.strokeRect(X(st.position[0]) - 4, Y(st.position[2]) - 4, 8, 8);
+      ctx.fillStyle = 'rgba(200,212,224,0.85)';
+      for (const g of world.graveyards) {
+        const x = X(g.center[0]);
+        const y = Y(g.center[2]);
+        for (const [dx, dy] of [[-2.5, 1.5], [2.5, 1.5], [0, -2.5]] as const) ctx.fillRect(x + dx - 0.8, y + dy - 0.8, 1.6, 1.6);
+      }
 
       // Wrecks.
       ctx.strokeStyle = 'rgba(154,164,176,0.9)';

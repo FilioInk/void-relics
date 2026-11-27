@@ -24,6 +24,11 @@ audio files.
 - **Four nebulae** — coloured smoke that cuts visibility, halves the scanner range and now and
   then flashes with lightning.
 - **Derelict wrecks** — torn hulls with flickering windows, sparks and a cloud of debris.
+- **Station ruins** — a broken truss station with modules and solar wings, or a torn habitat
+  wheel, drifting apart in slow tumbles; some portholes and beacons still have power.
+- **Satellite graveyards** — clusters of dead satellites (gold foil, solar wings, dishes)
+  tumbling among loose panels, and a **debris ring** of junk around the Earth-like world that
+  glints from orbit.
 - **20 relics**: in the fields, in the belt, inside nebulae, by the wrecks, in planetary orbits,
   in deep space, and one dangerously close to the star.
 
@@ -68,14 +73,16 @@ Source to **GitHub Actions**.
 ## How it works
 
 - `src/world/generate.ts` — the whole system as data from the seed: orbits, belt, fields,
-  nebulae, wrecks, relics, spawn point. Covered by tests (determinism, exactly 20 relics, none
-  inside a planet or a rock, and so on).
+  nebulae, wrecks, relics, spawn point, stations, satellite graveyards and the junk ring.
+  Covered by tests (determinism, exactly 20 relics, none inside a planet or a rock, debris
+  clear of everything, old galaxies unchanged by new content, and so on).
 - `src/game/flight.ts` — the arcade flight model: thrust → cruise speed, no thrust → stop,
   boost, turning toward the cursor.
 - `src/render/` — shaders for the planets, the star and the sky; nebula smoke from a baked
-  noise texture; asteroids from displaced icospheres; procedural wrecks; the player ship in
-  plating painted at start-up (`plating.ts`: panel seams, rivets, wear, a normal map from the
-  same layout), with a framed canopy, wing cannons and belled nozzles.
+  noise texture; asteroids from displaced icospheres; procedural wrecks, stations, satellites
+  and junk; the player ship in plating painted at start-up (`plating.ts`: panel seams, rivets,
+  wear, a normal map from the same layout), with a framed canopy, wing cannons and belled
+  nozzles.
 - `src/audio/engine.ts` — generative ambient on Web Audio: slow chords in drifting modes, FM
   bells with echo, a drone, cosmic wind, a tension layer near the star; plus impact, scanner
   ping, pickup and explosion sounds. Music plays at 90% by default (Music volume in the menu).

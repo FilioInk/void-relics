@@ -12,7 +12,7 @@ export type Collider = { position: [number, number, number]; radius: number };
 
 type Part = { geo: THREE.BufferGeometry; z: number };
 
-function painted(geo: THREE.BufferGeometry, color: THREE.Color, rng: Rng): THREE.BufferGeometry {
+export function painted(geo: THREE.BufferGeometry, color: THREE.Color, rng: Rng): THREE.BufferGeometry {
   const g = geo.index ? geo.toNonIndexed() : geo;
   const n = g.getAttribute('position').count;
   const colors = new Float32Array(n * 3);
