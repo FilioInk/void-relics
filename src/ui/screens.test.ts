@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { controlKeys, installSteps, playLabel } from './screens.ts';
+import { controlKeys, installSteps, pauseButtons, playLabel } from './screens.ts';
 import { t } from '../text.ts';
 
 test('the main game button names the hunt, and shows the score once relics are found', () => {
@@ -27,4 +27,17 @@ test('every browser without an install dialog gets at least one step', () => {
   assert.match(installSteps('ios').map((k) => t(k)).join(' '), /Share.*Add to Home Screen/);
   assert.match(installSteps('mac-safari').map((k) => t(k)).join(' '), /Add to Dock/);
   assert.match(installSteps('manual').map((k) => t(k)).join(' '), /Install app/);
+});
+
+test('the pause card leads back to the main menu, on a keyboard and on a touch screen', () => {
+  for (const touch of [false, true]) {
+    const buttons = pauseButtons(touch);
+    assert.equal(buttons[0]?.action, 'resume', 'carrying on stays the primary button');
+    assert.deepEqual(
+      buttons.filter((b) => b.action === 'menu').map((b) => t(b.label)),
+      ['Main menu'],
+    );
+  }
+  assert.equal(t(pauseButtons(true)[0]!.label), 'Tap to continue');
+  assert.equal(t(pauseButtons(false)[0]!.label), 'Click to continue');
 });

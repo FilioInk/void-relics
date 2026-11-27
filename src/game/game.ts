@@ -205,6 +205,7 @@ export class Game {
         onNewGalaxy: () => this.newGalaxy(),
         onInfinite: () => this.startInfinite(),
         onResume: () => this.resume(),
+        onMenu: () => this.toMenu(),
         onKeepFlying: () => this.resume(),
         onSettings: (next) => this.applySettings(next),
       },
@@ -412,6 +413,25 @@ export class Game {
     this.state = 'paused';
     this.screens.show('pause');
     this.save();
+  }
+
+  /**
+   * The pause card's way back to the start menu. The hunt stays as it is: progress is saved, the
+   * ship waits where it stopped, and Collect relics carries on from there.
+   */
+  private toMenu(): void {
+    if (this.state !== 'paused') return;
+    this.save();
+    this.audio?.click();
+    this.audio?.updateShip(0, 0, false);
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.keys.clear();
+    this.firing = false;
+    this.touch.reset();
+    this.hud.show(false);
+    this.map.el.hidden = true;
+    this.state = 'menu';
+    this.screens.show('menu');
   }
 
   private newGalaxy(): void {

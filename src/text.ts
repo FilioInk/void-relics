@@ -94,6 +94,7 @@ export const STRINGS = {
   paused: 'Paused',
   clickToResume: 'Click to continue',
   tapToResume: 'Tap to continue',
+  mainMenu: 'Main menu',
   victory: 'All twenty relics recovered',
   victoryTime: 'Time: {time}',
   keepFlying: 'Keep flying',

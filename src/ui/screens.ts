@@ -12,6 +12,8 @@ export type ScreenHandlers = {
   onNewGalaxy(): void;
   onInfinite(): void;
   onResume(): void;
+  /** From the pause card back to the start menu, keeping the hunt where it is. */
+  onMenu(): void;
   onKeepFlying(): void;
   onSettings(next: Settings): void;
   /** "Install app": the browser's dialog where it has one, else which steps to show. */
@@ -33,6 +35,14 @@ const TOUCH_CONTROLS = ['ctlTouchStick', 'ctlTouchThrust', 'ctlTouchBrake', 'ctl
 /** The controls list in the settings and pause cards: the keys, or on a touch device the on-screen controls. */
 export function controlKeys(touch: boolean): readonly Key[] {
   return touch ? TOUCH_CONTROLS : KEYBOARD_CONTROLS;
+}
+
+/** The pause card's buttons, first one primary: carry on, or leave the hunt for the start menu. */
+export function pauseButtons(touch: boolean): readonly { label: Key; action: 'resume' | 'menu' }[] {
+  return [
+    { label: touch ? 'tapToResume' : 'clickToResume', action: 'resume' },
+    { label: 'mainMenu', action: 'menu' },
+  ];
 }
 
 /** The main game's button: the hunt, with the score once it has started. */
@@ -190,7 +200,13 @@ export function createScreens(handlers: ScreenHandlers, state: () => ScreenState
             'div',
             { class: 'card' },
             h('h2', { text: t('paused') }),
-            h('div', { class: 'buttons' }, h('button', { class: 'btn', text: t(st.touch ? 'tapToResume' : 'clickToResume'), onclick: () => handlers.onResume() })),
+            h(
+              'div',
+              { class: 'buttons' },
+              ...pauseButtons(st.touch).map((b, i) =>
+                h('button', { class: i === 0 ? 'btn' : 'btn ghost', text: t(b.label), onclick: () => (b.action === 'menu' ? handlers.onMenu() : handlers.onResume()) }),
+              ),
+            ),
             h('div', { class: 'section-title', text: t('controlsTitle') }),
             controls(),
             settingsPanel(),
