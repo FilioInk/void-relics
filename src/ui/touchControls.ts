@@ -4,9 +4,9 @@ import { createWriter, h, icon } from './dom.ts';
 
 /**
  * On-screen controls for phones and tablets. The left half of the screen is a floating stick:
- * a thumb lands anywhere there and the stick centres under it. On the right sit THRUST, BRAKE,
- * BOOST and FIRE, and in the top-right corner the map and pause. Every finger is tracked by
- * its pointer, so steering, thrust and fire work at once. Shown only on touch-first devices
+ * a thumb lands anywhere there and the stick centres under it. On the right sit THRUST (pressed
+ * again, it brakes: see `ThrustLatch`), BOOST and FIRE, and in the top-right corner the map and
+ * pause. Every finger is tracked by its pointer, so steering, thrust and fire work at once. Shown only on touch-first devices
  * (`body.touch`), and only while flying or looking at the map.
  */
 
@@ -28,16 +28,16 @@ export function createTouchControls(actions: { onMap(): void; onPause(): void })
   const zone = h('div', { class: 't-zone', 'data-control': 'stick' });
   const knob = h('div', { class: 't-knob' });
   const base = h('div', { class: 't-stick passive' }, knob);
-  const button = (control: Exclude<Control, 'stick'>, label: string) =>
-    h('button', { class: `t-btn t-${control}`, type: 'button', 'data-control': control, tabindex: -1 }, h('span', { text: label }));
+  const button = (control: Exclude<Control, 'stick'>, label: HTMLElement) =>
+    h('button', { class: `t-btn t-${control}`, type: 'button', 'data-control': control, tabindex: -1 }, label);
+  const thrustLabel = h('span', { text: t('touchThrust') });
   const buttons = {
-    thrust: button('thrust', t('touchThrust')),
-    brake: button('brake', t('touchBrake')),
-    boost: button('boost', t('touchBoost')),
-    fire: button('fire', t('touchFire')),
+    thrust: button('thrust', thrustLabel),
+    boost: button('boost', h('span', { text: t('touchBoost') })),
+    fire: button('fire', h('span', { text: t('touchFire') })),
   };
-  const pad = h('div', { class: 't-pad' }, zone, base, buttons.brake, buttons.thrust, buttons.boost, buttons.fire);
-  const controls: HTMLElement[] = [zone, buttons.thrust, buttons.brake, buttons.boost, buttons.fire];
+  const pad = h('div', { class: 't-pad' }, zone, base, buttons.thrust, buttons.boost, buttons.fire);
+  const controls: HTMLElement[] = [zone, buttons.thrust, buttons.boost, buttons.fire];
 
   const mapBtn = h('button', { class: 't-top', type: 'button', onclick: () => actions.onMap() });
   const pauseBtn = h('button', { class: 't-top', type: 'button', 'aria-label': t('touchPause'), title: t('touchPause'), onclick: () => actions.onPause() });
@@ -64,9 +64,12 @@ export function createTouchControls(actions: { onMap(): void; onPause(): void })
   };
 
   const drawButtons = () => {
-    buttons.thrust.classList.toggle('on', latch.on(router.held('thrust')));
+    const held = router.held('thrust');
+    const braking = latch.brake(held);
+    buttons.thrust.classList.toggle('on', latch.on(held) || braking);
     buttons.thrust.classList.toggle('latched', latch.latched);
-    buttons.brake.classList.toggle('on', router.held('brake'));
+    buttons.thrust.classList.toggle('braking', braking);
+    w.text(thrustLabel, t(braking ? 'touchBrake' : 'touchThrust'));
     buttons.boost.classList.toggle('on', router.held('boost'));
     buttons.fire.classList.toggle('on', router.held('fire'));
   };
@@ -98,7 +101,6 @@ export function createTouchControls(actions: { onMap(): void; onPause(): void })
       drawStick();
     } else {
       if (control === 'thrust') latch.down(e.timeStamp);
-      if (control === 'brake') latch.cancel();
       drawButtons();
     }
   });
@@ -168,7 +170,7 @@ export function createTouchControls(actions: { onMap(): void; onPause(): void })
       return latch.on(router.held('thrust'));
     },
     get brake() {
-      return router.held('brake');
+      return latch.brake(router.held('thrust'));
     },
     get boost() {
       return router.held('boost');

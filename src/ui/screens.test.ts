@@ -13,7 +13,10 @@ test('a touch device lists the on-screen controls, not the keys', () => {
   const keys = controlKeys(false).map((k) => t(k));
   assert.ok(keys.some((s) => s.includes('Mouse')));
   assert.ok(!touch.some((s) => /mouse|keyboard|\bEsc\b|\bW —/i.test(s)), touch.join('\n'));
-  for (const name of ['Thrust', 'Brake', 'Boost', 'Fire', 'steer', 'map', 'pause', 'Infinite flight']) {
+  for (const name of ['Thrust', 'Boost', 'Fire', 'steer', 'map', 'pause', 'Infinite flight']) {
     assert.ok(touch.some((s) => s.includes(name)), `no line mentions ${name}`);
   }
+  // There is no BRAKE button: THRUST pressed again brakes, and its line says so.
+  assert.ok(!touch.some((s) => s.startsWith('Brake')), touch.join('\n'));
+  assert.match(touch.find((s) => s.startsWith('Thrust')) ?? '', /again to brake/);
 });

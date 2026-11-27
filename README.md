@@ -48,8 +48,8 @@ the build contains no images and no audio files.
 
 **On a phone or tablet** the game shows touch controls instead. Drag anywhere on the left half
 of the screen to steer: a stick appears under the thumb. On the right, around the thumb, are
-**Thrust** (hold it, or tap it once to keep flying and tap again to stop), **Brake**, **Boost**
-and **Fire**; the system map and pause are in the top-right corner. Steering, thrust and fire
+**Thrust** (hold it, or tap it once to keep flying; press it again to brake, and hold it to
+reverse), **Boost** and **Fire**; the system map and pause are in the top-right corner. Steering, thrust and fire
 work at the same time. Portrait and landscape both work. In infinite flight, a tap brings up
 the camera, full-screen and back buttons.
 
